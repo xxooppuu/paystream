@@ -43,7 +43,7 @@ const App: React.FC = () => {
   // Fetch Orders from Local Storage
   const fetchOrders = async () => {
     try {
-      const res = await fetch('http://localhost:3001/orders');
+      const res = await fetch(getApiUrl('orders'));
       if (res.ok) {
         const savedOrders: Order[] = await res.json();
         if (savedOrders) {
