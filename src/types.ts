@@ -78,6 +78,7 @@ export interface PaymentPageConfig {
   channelId: string; // 'default' for now
   minAmount?: number;
   maxAmount?: number;
+  notice?: string;
   createdAt: number;
 }
 

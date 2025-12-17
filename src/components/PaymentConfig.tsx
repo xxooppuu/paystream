@@ -13,8 +13,17 @@ export const PaymentConfig: React.FC = () => {
     // Config State (Saved to localStorage for now as simple preference, or we could add to a config file)
     const [pullMode, setPullMode] = useState<'specific' | 'random'>(localStorage.getItem('pullMode') as any || 'random');
     const [productMode, setProductMode] = useState<'shop' | 'random'>(localStorage.getItem('productMode') as any || 'random');
+    const [validityDuration, setValidityDuration] = useState<number>(180); // Default 3 mins
 
     useEffect(() => {
+        // Fetch System Settings
+        fetch(getApiUrl('settings'))
+            .then(res => res.json())
+            .then(data => {
+                if (data.validityDuration) setValidityDuration(Number(data.validityDuration));
+            })
+            .catch(console.error);
+
         fetch(getApiUrl('buyers'))
             .then(res => res.json())
             .then(data => {
@@ -66,6 +75,18 @@ export const PaymentConfig: React.FC = () => {
         localStorage.setItem('pullMode', pullMode);
         localStorage.setItem('productMode', productMode);
     }, [pullMode, productMode]);
+
+    const saveSettings = async (duration: number) => {
+        try {
+            await fetch(getApiUrl('settings'), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ validityDuration: duration })
+            });
+        } catch (e) {
+            console.error(e);
+        }
+    };
 
     return (
         <div className="space-y-6 animate-fade-in pb-20">
@@ -126,6 +147,29 @@ export const PaymentConfig: React.FC = () => {
                             </div>
                             <p className="text-xs text-slate-400 mt-2">
                                 {productMode === 'random' ? '从所有店铺的空闲商品中随机选择。' : '先选择店铺，再从该店铺中随机选择空闲商品。'}
+                            </p>
+                            <p className="text-xs text-slate-400 mt-2">
+                                {productMode === 'random' ? '从所有店铺的空闲商品中随机选择。' : '先选择店铺，再从该店铺中随机选择空闲商品。'}
+                            </p>
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-2">订单有效时间 (秒)</label>
+                            <div className="flex gap-2 items-center">
+                                <input
+                                    type="number"
+                                    className="w-24 px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"
+                                    value={validityDuration}
+                                    onChange={e => {
+                                        const val = parseInt(e.target.value) || 60;
+                                        setValidityDuration(val);
+                                        saveSettings(val);
+                                    }}
+                                />
+                                <span className="text-slate-500 text-sm">秒</span>
+                            </div>
+                            <p className="text-xs text-slate-400 mt-2">
+                                支付链接生成后的有效时间，超时后订单将自动取消。
                             </p>
                         </div>
                     </div>

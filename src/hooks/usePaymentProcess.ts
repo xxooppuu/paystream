@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { BuyerAccount, StoreAccount, InventoryItem, Order, OrderStatus } from '../types';
 import { getApiUrl, PROXY_URL } from '../config';
+import { performOrderCancellation, releaseInventory } from '../utils/orderActions';
 
 export const usePaymentProcess = () => {
     // State
@@ -10,10 +11,11 @@ export const usePaymentProcess = () => {
     const [error, setError] = useState<string | null>(null);
     const [paymentLink, setPaymentLink] = useState<string | null>(null);
     const [orderId, setOrderId] = useState<string | null>(null);
+    const [orderCreatedAt, setOrderCreatedAt] = useState<number | null>(null);
     const [currentBuyer, setCurrentBuyer] = useState<BuyerAccount | null>(null);
     const [lockedItem, setLockedItem] = useState<InventoryItem | null>(null);
 
-    // Internal Data (Fetched on demand or passed in? Let's fetch on mount to be ready)
+    // Internal Data
     const [buyers, setBuyers] = useState<BuyerAccount[]>([]);
     const [accounts, setAccounts] = useState<StoreAccount[]>([]);
     const [inventory, setInventory] = useState<InventoryItem[]>([]);
@@ -110,6 +112,23 @@ export const usePaymentProcess = () => {
         }
     };
 
+    const cancelCurrentOrder = async () => {
+        if (!orderId || !currentBuyer) return;
+
+        addLog('正在取消订单...');
+        const success = await performOrderCancellation(orderId, currentBuyer.id);
+
+        if (success) {
+            addLog('订单已取消');
+            setStep(0); // Reset or specific cancelled step?
+            setError('订单已超时取消');
+            await saveOrderToBackend(OrderStatus.CANCELLED);
+            await releaseInventory(lockedItem?.id);
+        } else {
+            addLog('取消失败，请重试');
+        }
+    };
+
     const startPayment = async (amount: number, buyerId?: string) => {
         setLoading(true);
         setLogs([]);
@@ -117,6 +136,7 @@ export const usePaymentProcess = () => {
         setStep(1);
         setPaymentLink(null);
         setOrderId(null);
+        setOrderCreatedAt(Date.now());
 
         try {
             // 1. Select Buyer
@@ -131,13 +151,11 @@ export const usePaymentProcess = () => {
             setCurrentBuyer(buyer);
             addLog(`买家账号: ${buyer.remark}`);
 
-            // 2. Refresh Inventory Logic (Simplified from TestPayment)
-            // We need fresh inventory because it changes.
+            // 2. Refresh Inventory Logic
             const sRes = await fetch(getApiUrl('shops'));
             const freshAccounts: StoreAccount[] = await sRes.json();
             const freshInventory = freshAccounts.flatMap(a => a.inventory || []);
             setAccounts(freshAccounts);
-            // no setInventory needed if we filter freshInventory
 
             const idleItems = freshInventory.filter(i =>
                 i.status.includes('出售') &&
@@ -148,7 +166,7 @@ export const usePaymentProcess = () => {
 
             const item = idleItems[Math.floor(Math.random() * idleItems.length)];
             setLockedItem(item);
-            addLog(`匹配商品: ${item.parentTitle.substring(0, 15)}... (ID: ${item.infoId})`);
+            addLog(`匹配商品: ${item.parentTitle.substring(0, 15)}...`);
 
             // Lock Item
             const updatedAccounts = freshAccounts.map(a => ({
@@ -203,6 +221,11 @@ export const usePaymentProcess = () => {
             const newOrderId = orderRes.respData.orderId;
             const payId = orderRes.respData.payId;
             setOrderId(newOrderId);
+            // Don't reset orderCreatedAt, keep the start time or use newOrderId creation time? 
+            // Using startPayment time is stricter. User wants countdown from "Order Generated"?
+            // "生成完付款订单的页面... 3分钟有效 -> 订单已生成 + 倒计时"
+            // So countdown starts when order is created.
+            setOrderCreatedAt(Date.now());
             addLog(`下单成功! 订单号: ${newOrderId}`);
 
             // 6. Get Payment Link
@@ -246,18 +269,8 @@ export const usePaymentProcess = () => {
         } catch (e: any) {
             setError(e.message);
             addLog(`错误: ${e.message}`);
-            // Revert Lock
-            if (lockedItem) {
-                const freshRes = await fetch(getApiUrl('shops'));
-                if (freshRes.ok) {
-                    const freshShops: StoreAccount[] = await freshRes.json();
-                    const reverted = freshShops.map(a => ({
-                        ...a,
-                        inventory: a.inventory?.map(i => i.id === lockedItem.id ? { ...i, internalStatus: 'idle' as const } : i)
-                    }));
-                    await saveShops(reverted);
-                }
-            }
+            // Revert Lock on Error
+            await releaseInventory(lockedItem?.id);
         } finally {
             setLoading(false);
         }
@@ -277,16 +290,7 @@ export const usePaymentProcess = () => {
                     if (statusStr === '3' || statusInfo?.includes('待发货') || statusInfo?.includes('已支付')) {
                         setStep(6);
                         clearInterval(interval);
-                        // Unlock Item (Set to Idle)
-                        if (lockedItem) {
-                            const sRes = await fetch(getApiUrl('shops'));
-                            const shops: StoreAccount[] = await sRes.json();
-                            const updated = shops.map(a => ({
-                                ...a,
-                                inventory: a.inventory?.map(i => i.id === lockedItem.id ? { ...i, internalStatus: 'idle' as const } : i)
-                            }));
-                            saveShops(updated);
-                        }
+                        await releaseInventory(lockedItem?.id);
                         saveOrderToBackend(OrderStatus.SUCCESS);
                     } else if (statusStr === '19' || statusInfo?.includes('已取消')) {
                         clearInterval(interval);
@@ -300,12 +304,14 @@ export const usePaymentProcess = () => {
 
     return {
         startPayment,
+        cancelCurrentOrder, // New Action
         loading,
         logs,
         step,
         error,
         paymentLink,
         orderId,
-        buyers, // Expose for selection if needed
+        orderCreatedAt, // New State
+        buyers,
     };
 };

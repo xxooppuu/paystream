@@ -12,6 +12,7 @@ export const PaymentPages: React.FC = () => {
     const [title, setTitle] = useState('');
     const [minAmount, setMinAmount] = useState('');
     const [maxAmount, setMaxAmount] = useState('');
+    const [notice, setNotice] = useState('');
 
     const fetchPages = async () => {
         setLoading(true);
@@ -42,6 +43,7 @@ export const PaymentPages: React.FC = () => {
             channelId: 'default',
             minAmount: minAmount ? parseFloat(minAmount) : undefined,
             maxAmount: maxAmount ? parseFloat(maxAmount) : undefined,
+            notice,
             createdAt: Date.now()
         };
 
@@ -55,7 +57,7 @@ export const PaymentPages: React.FC = () => {
 
         setPages(updatedPages);
         setShowAddModal(false);
-        setTitle(''); setMinAmount(''); setMaxAmount('');
+        setTitle(''); setMinAmount(''); setMaxAmount(''); setNotice('');
     };
 
     const handleDelete = async (id: string) => {
@@ -190,6 +192,16 @@ export const PaymentPages: React.FC = () => {
                                     onChange={e => setMaxAmount(e.target.value)}
                                 />
                             </div>
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-1">页面注意事项 (可选)</label>
+                            <textarea
+                                className="w-full px-4 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 h-24"
+                                placeholder="填写显示在支付页面的提示信息..."
+                                value={notice}
+                                onChange={e => setNotice(e.target.value)}
+                            />
                         </div>
 
                         <div className="text-sm text-slate-500 bg-slate-50 p-3 rounded-lg">
