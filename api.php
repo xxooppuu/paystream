@@ -8,6 +8,13 @@
  * - Proxy: /api.php?act=proxy (POST)
  */
 
+// Prevent any output before headers
+ob_start();
+
+// Suppress PHP warnings/notices that might break JSON
+error_reporting(0);
+ini_set('display_errors', '0');
+
 header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Methods: POST, GET, OPTIONS");
 header("Access-Control-Allow-Headers: Content-Type, User-Agent, X-Requested-With");
