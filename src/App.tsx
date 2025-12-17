@@ -19,10 +19,21 @@ import { Inventory } from './components/Inventory';
 import { TestPayment } from './components/TestPayment';
 import { PaymentConfig } from './components/PaymentConfig';
 import { Settings } from './components/Settings';
+import { PaymentPages } from './components/PaymentPages';
+import { PublicPayment } from './components/PublicPayment';
 import { ViewState, Order, OrderStatus } from './types';
 import { getApiUrl, PROXY_URL } from './config';
 
 const App: React.FC = () => {
+  // Check for Public Payment Route
+  const [publicPayId, setPublicPayId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const payId = params.get('pay');
+    if (payId) setPublicPayId(payId);
+  }, []);
+
   // Global State
   const [isLoggedIn, setIsLoggedIn] = useState(() => {
     // Check local storage for session
@@ -377,6 +388,10 @@ const App: React.FC = () => {
     setCurrentView('dashboard');
   };
 
+  if (publicPayId) {
+    return <PublicPayment pageId={publicPayId} />;
+  }
+
   if (!isLoggedIn) {
     return <Login onLogin={() => {
       setIsLoggedIn(true);
@@ -394,6 +409,7 @@ const App: React.FC = () => {
     { id: 'test-payment', label: '测试支付', icon: CreditCard },
     { id: 'config', label: '通道配置', icon: SettingsIcon },
     { id: 'settings', label: '系统设置', icon: SettingsIcon },
+    { id: 'payment-pages', label: '收款页管理', icon: CreditCard },
   ];
 
   return (
@@ -501,6 +517,7 @@ const App: React.FC = () => {
             {currentView === 'config' && <PaymentConfig />}
             {currentView === 'channels' && <PaymentChannels />}
             {currentView === 'settings' && <Settings />}
+            {currentView === 'payment-pages' && <PaymentPages />}
           </div>
         </main>
       </div>

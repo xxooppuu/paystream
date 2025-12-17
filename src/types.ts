@@ -72,4 +72,13 @@ export interface SystemSettings {
   // Add other settings here in the future
 }
 
-export type ViewState = 'dashboard' | 'orders' | 'inventory' | 'test-payment' | 'config' | 'channels' | 'settings';
+export interface PaymentPageConfig {
+  id: string;
+  title: string;
+  channelId: string; // 'default' for now
+  minAmount?: number;
+  maxAmount?: number;
+  createdAt: number;
+}
+
+export type ViewState = 'dashboard' | 'orders' | 'inventory' | 'test-payment' | 'config' | 'channels' | 'settings' | 'payment-pages';

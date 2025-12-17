@@ -82,6 +82,9 @@ try {
         case 'settings':
             handleFileRequest('settings.json', new stdClass()); // Empty object for settings
             break;
+        case 'payment_pages':
+            handleFileRequest('payment_pages.json');
+            break;
         
         case 'proxy':
             if ($method !== 'POST') {
