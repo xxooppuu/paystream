@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { usePaymentProcess } from '../hooks/usePaymentProcess';
 import { PaymentPageConfig } from '../types';
 import { getApiUrl } from '../config';
-import { CreditCard, ShieldCheck, AlertCircle, Loader2, CheckCircle, Smartphone, Clock, XCircle } from 'lucide-react';
+import { CreditCard, ShieldCheck, AlertCircle, Loader2, CheckCircle, Smartphone, Clock, XCircle, Hourglass } from 'lucide-react';
 
 interface Props {
     pageId: string;
@@ -14,9 +14,10 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
     const [amountInput, setAmountInput] = useState('');
     const [validityDuration, setValidityDuration] = useState(180); // Default 3 mins
     const [timeLeft, setTimeLeft] = useState<number | null>(null);
+    const [queueTimeLeft, setQueueTimeLeft] = useState<number | null>(null);
 
     // Logic from the hook
-    const { startPayment, cancelCurrentOrder, loading, logs, step, error, paymentLink, orderCreatedAt } = usePaymentProcess();
+    const { startPayment, cancelCurrentOrder, loading, logs, step, error, paymentLink, orderCreatedAt, queueEndTime } = usePaymentProcess();
 
     useEffect(() => {
         // Fetch specific config
@@ -59,6 +60,20 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
             return () => clearInterval(timer);
         }
     }, [step, orderCreatedAt, validityDuration]);
+
+    useEffect(() => {
+        if (queueEndTime) {
+            const timer = setInterval(() => {
+                const now = Date.now();
+                const remaining = Math.max(0, Math.ceil((queueEndTime - now) / 1000));
+                setQueueTimeLeft(remaining);
+                if (remaining <= 0) clearInterval(timer);
+            }, 500);
+            return () => clearInterval(timer);
+        } else {
+            setQueueTimeLeft(null);
+        }
+    }, [queueEndTime]);
 
     const formatTime = (seconds: number) => {
         const m = Math.floor(seconds / 60);
@@ -154,6 +169,26 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
 
                             <InfoBox />
                         </>
+                    )}
+
+                    {step === 0.5 && (
+                        <div className="text-center py-12 space-y-6 animate-fade-in">
+                            <div className="w-20 h-20 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-6 text-amber-600 animate-pulse">
+                                <Hourglass className="w-10 h-10" />
+                            </div>
+                            <div className="space-y-4">
+                                <h3 className="text-xl font-bold text-slate-800">当前订单过多，排队中...</h3>
+                                <div className="bg-amber-50 text-amber-800 px-4 py-3 rounded-xl border border-amber-100 max-w-xs mx-auto">
+                                    <p className="text-sm">系统正在努力匹配空闲商品</p>
+                                    <p className="text-xs mt-1 text-amber-600">预计等待时间: {queueTimeLeft !== null ? `${queueTimeLeft}秒` : '计算中...'}</p>
+                                </div>
+
+                                <div className="w-full bg-slate-100 rounded-full h-2 mt-4 overflow-hidden">
+                                    <div className="bg-amber-500 h-full rounded-full animate-progress-indeterminate"></div>
+                                </div>
+                                <p className="text-xs text-slate-400">一旦有空闲将自动为您匹配</p>
+                            </div>
+                        </div>
                     )}
 
                     {step > 0 && step < 5 && (

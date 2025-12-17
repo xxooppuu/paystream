@@ -3,24 +3,31 @@ import { BuyerAccount, StoreAccount, InventoryItem, Order, OrderStatus } from '.
 import { getApiUrl, PROXY_URL } from '../config';
 import { performOrderCancellation, releaseInventory } from '../utils/orderActions';
 
+const QUEUE_TIMEOUT_MS = 60000; // 60s
+const POLLING_INTERVAL_MS = 3000;
+
 export const usePaymentProcess = () => {
     // State
     const [loading, setLoading] = useState(false);
     const [logs, setLogs] = useState<string[]>([]);
     const [step, setStep] = useState<number>(0);
+    // Step Definition: 
+    // 0: Init, 0.5: Queueing, 1: Creating, 2: Changing Price, 3: Address, 4: Link, 5: Pay Wait, 6: Success
     const [error, setError] = useState<string | null>(null);
     const [paymentLink, setPaymentLink] = useState<string | null>(null);
     const [orderId, setOrderId] = useState<string | null>(null);
     const [orderCreatedAt, setOrderCreatedAt] = useState<number | null>(null);
     const [currentBuyer, setCurrentBuyer] = useState<BuyerAccount | null>(null);
     const [lockedItem, setLockedItem] = useState<InventoryItem | null>(null);
+    const [queueEndTime, setQueueEndTime] = useState<number | null>(null);
 
     // Internal Data
     const [buyers, setBuyers] = useState<BuyerAccount[]>([]);
     const [accounts, setAccounts] = useState<StoreAccount[]>([]);
-    const [inventory, setInventory] = useState<InventoryItem[]>([]);
 
+    // Helpers
     const addLog = (msg: string) => setLogs(prev => [`[${new Date().toLocaleTimeString()}] ${msg}`, ...prev]);
+    const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
     // Initial Data Load
     useEffect(() => {
@@ -28,15 +35,7 @@ export const usePaymentProcess = () => {
             .then(res => res.json())
             .then(data => Array.isArray(data) && setBuyers(data));
 
-        fetch(getApiUrl('shops'))
-            .then(res => res.json())
-            .then(data => {
-                if (Array.isArray(data)) {
-                    setAccounts(data);
-                    const allItems = data.flatMap((a: StoreAccount) => a.inventory || []);
-                    setInventory(allItems);
-                }
-            });
+        // Initial shop load just for cache/display, real logic fetches fresh
     }, []);
 
     const saveShops = async (newAccounts: StoreAccount[]) => {
@@ -72,12 +71,10 @@ export const usePaymentProcess = () => {
         if (!actingOrderId || !actingBuyer) return;
 
         try {
-            // Get existing
             const getRes = await fetch(getApiUrl('orders'));
             let existing: Order[] = [];
             if (getRes.ok) existing = await getRes.json();
 
-            // Construct Order (Partial - relies on existing or override)
             const oldOrder = existing.find(o => o.id === actingOrderId);
 
             const newOrder: Order = {
@@ -103,10 +100,6 @@ export const usePaymentProcess = () => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(newOrders)
             });
-
-            if (status === OrderStatus.SUCCESS) {
-                addLog(`订单状态已更新为: ${status}`);
-            }
         } catch (err) {
             console.error('Save order failed', err);
         }
@@ -120,7 +113,7 @@ export const usePaymentProcess = () => {
 
         if (success) {
             addLog('订单已取消');
-            setStep(0); // Reset or specific cancelled step?
+            setStep(0);
             setError('订单已超时取消');
             await saveOrderToBackend(OrderStatus.CANCELLED);
             await releaseInventory(lockedItem?.id);
@@ -129,29 +122,16 @@ export const usePaymentProcess = () => {
         }
     };
 
-    const startPayment = async (amount: number, buyerId?: string) => {
-        setLoading(true);
-        setLogs([]);
-        setError(null);
-        setStep(1);
-        setPaymentLink(null);
-        setOrderId(null);
-        setOrderCreatedAt(Date.now());
+    // Inventory Matching with Retry/Queue
+    const findAndLockInventory = async (): Promise<{ item: InventoryItem; freshAccounts: StoreAccount[] }> => {
+        const startTime = Date.now();
+        const endTime = startTime + QUEUE_TIMEOUT_MS;
+        setQueueEndTime(endTime);
 
-        try {
-            // 1. Select Buyer
-            let buyer: BuyerAccount | undefined;
-            if (buyerId) {
-                buyer = buyers.find(b => b.id === buyerId);
-            } else {
-                buyer = buyers[Math.floor(Math.random() * buyers.length)];
-            }
+        let isQueueing = false;
 
-            if (!buyer) throw new Error('未找到可用买家账号');
-            setCurrentBuyer(buyer);
-            addLog(`买家账号: ${buyer.remark}`);
-
-            // 2. Refresh Inventory Logic
+        while (Date.now() < endTime) {
+            // Fetch Fresh
             const sRes = await fetch(getApiUrl('shops'));
             const freshAccounts: StoreAccount[] = await sRes.json();
             const freshInventory = freshAccounts.flatMap(a => a.inventory || []);
@@ -162,18 +142,69 @@ export const usePaymentProcess = () => {
                 (i.internalStatus === 'idle' || !i.internalStatus)
             );
 
-            if (idleItems.length === 0) throw new Error('库存不足 (无空闲商品)');
+            if (idleItems.length > 0) {
+                // Found!
+                const item = idleItems[Math.floor(Math.random() * idleItems.length)];
 
-            const item = idleItems[Math.floor(Math.random() * idleItems.length)];
-            setLockedItem(item);
-            addLog(`匹配商品: ${item.parentTitle.substring(0, 15)}...`);
+                // Lock it
+                const updatedAccounts = freshAccounts.map(a => ({
+                    ...a,
+                    inventory: a.inventory?.map(i => i.id === item.id ? { ...i, internalStatus: 'occupied' as const, lastMatchedTime: Date.now() } : i)
+                }));
+                await saveShops(updatedAccounts);
 
-            // Lock Item
-            const updatedAccounts = freshAccounts.map(a => ({
-                ...a,
-                inventory: a.inventory?.map(i => i.id === item.id ? { ...i, internalStatus: 'occupied' as const, lastMatchedTime: Date.now() } : i)
-            }));
-            await saveShops(updatedAccounts); // Persist
+                if (isQueueing) addLog('排队结束，匹配成功！');
+                return { item, freshAccounts: updatedAccounts }; // Optimistic check passed
+            }
+
+            // Not found, enter queue mode if not already
+            if (!isQueueing) {
+                isQueueing = true;
+                setStep(0.5); // Queue Step
+                addLog('当前订单过多，进入排队模式...');
+            }
+
+            await delay(POLLING_INTERVAL_MS);
+        }
+
+        setQueueEndTime(null);
+        throw new Error('当前过于繁忙，请稍后重试');
+    };
+
+    const startPayment = async (amount: number, buyerId?: string) => {
+        setLoading(true);
+        setLogs([]);
+        setError(null);
+        setStep(1); // Default strictly to creating if instant, but might switch to 0.5
+        setPaymentLink(null);
+        setOrderId(null);
+        setOrderCreatedAt(Date.now());
+        setQueueEndTime(null);
+
+        try {
+            // 1. Inventory Match (Handles Queueing internally)
+            let item: InventoryItem, freshAccounts: StoreAccount[];
+            try {
+                const result = await findAndLockInventory();
+                item = result.item;
+                freshAccounts = result.freshAccounts;
+                setLockedItem(item);
+                addLog(`匹配商品: ${item.parentTitle.substring(0, 15)}...`);
+                setStep(1); // Back to creating
+            } catch (e: any) {
+                // Determine if it was a queue timeout or other error
+                throw e; // Bubble up
+            }
+
+            // 2. Select Buyer
+            let buyer: BuyerAccount | undefined;
+            if (buyerId) {
+                buyer = buyers.find(b => b.id === buyerId);
+            } else {
+                buyer = buyers[Math.floor(Math.random() * buyers.length)];
+            }
+            if (!buyer) throw new Error('未找到可用买家账号');
+            setCurrentBuyer(buyer);
 
             // 3. Get Seller & Change Price
             const seller = freshAccounts.find(a => a.id === item.accountId);
@@ -221,10 +252,6 @@ export const usePaymentProcess = () => {
             const newOrderId = orderRes.respData.orderId;
             const payId = orderRes.respData.payId;
             setOrderId(newOrderId);
-            // Don't reset orderCreatedAt, keep the start time or use newOrderId creation time? 
-            // Using startPayment time is stricter. User wants countdown from "Order Generated"?
-            // "生成完付款订单的页面... 3分钟有效 -> 订单已生成 + 倒计时"
-            // So countdown starts when order is created.
             setOrderCreatedAt(Date.now());
             addLog(`下单成功! 订单号: ${newOrderId}`);
 
@@ -263,20 +290,22 @@ export const usePaymentProcess = () => {
             else if (match2) setPaymentLink(match2[1]);
             else throw new Error('无法解析最终支付链接');
 
-            addLog('核心支付链接获取成功!');
             setStep(5);
 
         } catch (e: any) {
             setError(e.message);
             addLog(`错误: ${e.message}`);
             // Revert Lock on Error
-            await releaseInventory(lockedItem?.id);
+            if (lockedItem) await releaseInventory(lockedItem.id);
+            setStep(e.message.includes('繁忙') ? 0.5 : 0); // Keep in queue UI if timeout? No, timeout means stop.
+            if (e.message.includes('繁忙')) setStep(0); // Reset UI to allow retry
         } finally {
             setLoading(false);
+            setQueueEndTime(null);
         }
     };
 
-    // Polling Logic
+    // Polling Logic for Status
     useEffect(() => {
         let interval: any;
         if (step === 5 && orderId && currentBuyer) {
@@ -304,14 +333,14 @@ export const usePaymentProcess = () => {
 
     return {
         startPayment,
-        cancelCurrentOrder, // New Action
+        cancelCurrentOrder,
         loading,
         logs,
         step,
         error,
         paymentLink,
         orderId,
-        orderCreatedAt, // New State
-        buyers,
+        orderCreatedAt,
+        queueEndTime, // New
     };
 };

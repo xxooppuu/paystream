@@ -7,6 +7,7 @@ export const PaymentPages: React.FC = () => {
     const [pages, setPages] = useState<PaymentPageConfig[]>([]);
     const [loading, setLoading] = useState(false);
     const [showAddModal, setShowAddModal] = useState(false);
+    const [editId, setEditId] = useState<string | null>(null);
 
     // Form State
     const [title, setTitle] = useState('');
@@ -47,7 +48,12 @@ export const PaymentPages: React.FC = () => {
             createdAt: Date.now()
         };
 
-        const updatedPages = [...pages, newPage];
+        let updatedPages;
+        if (editId) {
+            updatedPages = pages.map(p => p.id === editId ? { ...newPage, id: editId, createdAt: p.createdAt } : p);
+        } else {
+            updatedPages = [...pages, newPage];
+        }
 
         await fetch(getApiUrl('payment_pages'), {
             method: 'POST',
@@ -57,7 +63,17 @@ export const PaymentPages: React.FC = () => {
 
         setPages(updatedPages);
         setShowAddModal(false);
+        setEditId(null);
         setTitle(''); setMinAmount(''); setMaxAmount(''); setNotice('');
+    };
+
+    const handleEdit = (page: PaymentPageConfig) => {
+        setEditId(page.id);
+        setTitle(page.title);
+        setMinAmount(page.minAmount?.toString() || '');
+        setMaxAmount(page.maxAmount?.toString() || '');
+        setNotice(page.notice || '');
+        setShowAddModal(true);
     };
 
     const handleDelete = async (id: string) => {
@@ -111,6 +127,15 @@ export const PaymentPages: React.FC = () => {
                             </button>
                         </div>
 
+                        <div className="mb-4">
+                            <button
+                                onClick={() => handleEdit(page)}
+                                className="text-xs border border-indigo-200 text-indigo-600 px-2 py-1 rounded hover:bg-indigo-50 transition-colors"
+                            >
+                                编辑配置
+                            </button>
+                        </div>
+
                         <div className="space-y-2 text-sm text-slate-600 mb-6">
                             <div className="flex justify-between">
                                 <span>通道:</span>
@@ -160,7 +185,7 @@ export const PaymentPages: React.FC = () => {
             {showAddModal && (
                 <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
                     <div className="bg-white rounded-xl w-full max-w-md p-6 space-y-4">
-                        <h3 className="text-xl font-bold text-slate-800">新增收款页</h3>
+                        <h3 className="text-xl font-bold text-slate-800">{editId ? '编辑收款页' : '新增收款页'}</h3>
 
                         <div>
                             <label className="block text-sm font-medium text-slate-700 mb-1">页面标题 (展示给用户)</label>
@@ -219,7 +244,7 @@ export const PaymentPages: React.FC = () => {
                                 onClick={handleSave}
                                 className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg"
                             >
-                                确认创建
+                                {editId ? '保存修改' : '确认创建'}
                             </button>
                         </div>
                     </div>
