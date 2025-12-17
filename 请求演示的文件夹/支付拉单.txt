@@ -1,0 +1,35 @@
+POST https://app.zhuanzhuan.com/zz/transfer/saveCashierDeskInfo HTTP/1.1
+Host: app.zhuanzhuan.com
+Accept: application/json, text/plain, */*
+zzReqVersion: 466ae98af8026cb4838a212f3b8157a0
+Csrf-Token: a05c744cd0b6a81be380d5f20e0604e8a1e10c3c
+Sec-Fetch-Site: same-site
+zzReqT: 1765885300144
+zzReqSign: aad2d96513a2875f9df202134e3499c7
+Accept-Language: zh-CN,zh-Hans;q=0.9
+Accept-Encoding: gzip, deflate, br
+Sec-Fetch-Mode: cors
+Content-Type: application/x-www-form-urlencoded
+Origin: https://m.zhuanzhuan.com
+User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0.1 Mobile/15E148 Safari/604.1
+Referer: https://m.zhuanzhuan.com/
+Content-Length: 635
+Connection: keep-alive
+Sec-Fetch-Dest: empty
+Cookie: t=25; tk=CigARGlBQ4GBWjNLBropAg==; zz_t=25; zzreferer=https%3A%2F%2Fm.zhuanzhuan.com%2Fwechat%2Fm-pay.html%23%2Fhome; v=9.0.0; goods-token="466ae98af8026cb4838a212f3b8157a0,TsPApfgJEMTW4P13R92ShDW/8hDT84rWul2CfBQuCU49bsTUpkZdgJFWgGrlLYBnKRAOHfFTgZRByDb0yc1Efg=="; Safe-PPU="TT=a05c744cd0b6a81be380d5f20e0604e8a1e10c3c&UID=2000301043184752000&CT=1765884885739&SF=ZHUANZHUAN&SCT=1765888485739&V=2&K=1765814460&ET=1768476885739&AP=25"; nickname=%E7%94%A8%E6%88%B72265zQ; picUrl=https%3A%2F%2Fpic5.zhuanstatic.com%2Fzhuanzh%2Fb10bb2e0-7edf-4d0b-b7f9-c2b21637eece.png; uid=2000301043184752000; PPU="TT=a05c744cd0b6a81be380d5f20e0604e8a1e10c3c&UID=2000301043184752000&CT=1765884885739&SF=ZHUANZHUAN&SCT=1765888485739&V=2&K=1765814460&ET=1768476885739&AP=25"; zzVisitStack=%5B%7B%22type%22%3A%22onShow%22%2C%22href%22%3A%22m.zhuanzhuan.com%252Fcommon%252Floginsms%252Findex.html%2523%252Flogin%22%2C%22time%22%3A1765884816541%7D%5D; id58=CigACGlBQ4Smvis0By5pAg==; idzz=CigARGlBQ4GBWjNLBropAg==
+
+reqSource=1&mchId=1001&payId=2000894068400683920&payMode=base&captureState=-1&payList=%5B%7B%22payMethod%22%3A%220%22%2C%22tradeType%22%3A%22NEW_TRADE%22%2C%22money%22%3A%2214800%22%2C%22extendParam%22%3A%7B%22frontEndType%22%3A%223%22%2C%22appName%22%3A%22%E8%BD%AC%E8%BD%AC%E5%AE%98%E7%BD%91%22%2C%22appBundleId%22%3A%22https%3A%2F%2Fm.zhuanzhuan.58.com%22%2C%22payConfigId%22%3A%22showChannel%3ASHOW_WX%3BnameRuleId%3A1821105009618587136%22%2C%22instalmentNum%22%3A%220%22%2C%22cmbToken%22%3A%22%22%2C%22payConfigKey%22%3A%22showChannel%3ASHOW_WX%3BnameRuleId%3A1821105009618587136%22%7D%2C%22tradeTypeKey%22%3A%22NEW_TRADE%22%7D%5D
+HTTP/1.1 200 OK
+Server: Tengine
+Date: Tue, 16 Dec 2025 11:41:40 GMT
+Content-Type: application/json; charset=UTF-8
+Connection: keep-alive
+Vary: Accept-Encoding
+access-control-allow-origin: https://m.zhuanzhuan.com
+vary: origin
+access-control-allow-credentials: true
+access-control-expose-headers: Trace-Id
+Trace-Id: 694145740a2b27c800000068547d14f9
+Content-Length: 318
+
+{"respData":{"thirdPayInfodata":[{"payMethod":"0","payData":{"mWebUrl":"https://wx.tenpay.com/cgi-bin/mmpayweb-bin/checkmweb?prepay_id=wx161941408990315e800280db5585e90000&package=3641184347","mchId":"1001","payId":"2000894068400683920"},"tradeTypeKey":"MWEB"}],"returnCode":"SUCCESS","returnMsg":"OK"},"respCode":"0"}

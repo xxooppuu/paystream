@@ -1,0 +1,31 @@
+GET https://app.zhuanzhuan.com/zz/transfer/getAllAddress HTTP/1.1
+Host: app.zhuanzhuan.com
+zzreferer: https://app.zhuanzhuan.com/zz/16/B3455
+Csrf-Token: 9db2d9929ed3d008a5dd2e6e9e12c49f869c8063
+zzReqT: 1765883376000
+zztk: 
+zzReqAllParam: zztk|zzReqT
+zzReqSign: f28248c1e8ce85ebb03cb4326b8fecab
+X-ZZ-Monitoring-Metrics: feMetricAntiCheatLevel=V1
+Accept-Language: zh-Hans-CN;q=1, zh-Hant-TW;q=0.9
+Accept-Encoding: gzip,deflate
+zzht: i_16
+Accept: */*
+User-Agent: zhuanzhuan/11.21.5 (iPhone; iOS 26.0.1; Scale/3.00)
+Referer: https://app.zhuanzhuan.com/zz/16/B3455
+Connection: keep-alive
+Cookie: srv_orderAddressChangeAb=1; srv_searchFilterMergeAB=0; srv_dualTrackCateTestKey=1; srv_ck2=ck2value; dualTrackFinenessAbRaw=C;platformUpgradeRaw=9311;tk=3ea0c8ffd7fe91f43530cfbc3d60caa7a84a0871;platformUpgradeLuxin=3;PPU="TT=9db2d9929ed3d008a5dd2e6e9e12c49f869c8063&UID=1605260075493237632&CT=1765882609734&SF=ZHUANZHUAN&SCT=1765886209734&V=2&K=1765814460&ET=1768474609734&AP=16"; Max-Age=2592000; Expires=Thu, 15 Jan 2026 10:56:49 GMT;;brandUpgradeAB=0;lon=0.000000;brand=Apple;dualTrackCateAbSwitch=1;t=16;osv=26.0.1;sts=1765883310677;platformUpgradeYumi=1;v=11.21.5;feedRecommendation=0;luxurySpecialItem=3;dualTrackFinenessAbSwitch=1;zz_t=16;uid=1605260075493237632;officialVerifyUnifyAB=C;Safe-PPU="TT=9db2d9929ed3d008a5dd2e6e9e12c49f869c8063&UID=1605260075493237632&CT=1765882609734&SF=ZHUANZHUAN&SCT=1765886209734&V=2&K=1765814460&ET=1768474609734&AP=16"; Max-Age=2592000; Expires=Thu, 15 Jan 2026 10:56:49 GMT;;request_remove_latlon=0;model=iPhone13%2C2;lat=0.000000;platformUpgradeSwitch=1;
+
+
+HTTP/1.1 200 OK
+Server: Tengine
+Date: Tue, 16 Dec 2025 11:09:36 GMT
+Content-Type: application/json; charset=UTF-8
+Connection: keep-alive
+Vary: Accept-Encoding
+Trace-Id: 69413df00a2b27c8000000685463e6ce
+Set-Cookie: id58=CigAVmlBPfAKPFEJBpEzAg==; expires=Thu, 16-Dec-27 11:09:36 GMT; domain=zhuanzhuan.com; path=/
+P3P: policyref="/w3c/p3p.xml", CP="CUR ADM OUR NOR STA NID"
+Content-Length: 448
+
+{"respData":[{"id":"1605259352514498603","uid":"1605260075493237632","name":"陈夏动3","mobile":"180****4137","mailCode":"","city":"厦门市 集美区","detail":"福建省厦门市集美区灌南中路505号智汇汉马驾校灌口校区","province":"福建省","isDefault":"1","cityId":"606","provinceId":"-27","areaId":"607","center":false,"centerString":"0","lon":"118.009949","lat":"24.606366","streetNumber":"门口一楼"}],"respCode":"0"}

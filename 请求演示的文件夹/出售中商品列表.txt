@@ -1,0 +1,31 @@
+GET https://app.zhuanzhuan.com/zzx/transfer/getSellerOrders2?pageNum=1&pageSize=10&tipId=2&keyWords=&abGroup=2 HTTP/1.1
+Host: app.zhuanzhuan.com
+Accept: application/json, text/plain, */*
+Csrf-Token: 54d007f813f03dd1bfcaf1597e6e3a3d223b64e2
+Sec-Fetch-Site: same-site
+Accept-Encoding: gzip, deflate, br
+Accept-Language: zh-CN,zh-Hans;q=0.9
+Sec-Fetch-Mode: cors
+Content-Type: application/x-www-form-urlencoded; charset=utf-8
+Origin: https://m.zhuanzhuan.com
+User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 zzVersion/11.21.5 zzT/16 zzDevice/1_141.0_3.0 zzApp/58ZhuanZhuan
+Referer: https://m.zhuanzhuan.com/
+Connection: keep-alive
+Sec-Fetch-Dest: empty
+Cookie: zzreferer=https%3A%2F%2Fm.zhuanzhuan.com%2Ftrade%2Forder_list_v3%2Fsell.html; PPU="TT=54d007f813f03dd1bfcaf1597e6e3a3d223b64e2&UID=40326048107539&CT=1765828516060&SF=ZHUANZHUAN&SCT=1765832116060&V=2&K=1765814460&ET=1768420516060&AP=16"; Max-Age=2592000; Expires=Wed, 14 Jan 2026 19:55:16 GMT;; Safe-PPU="TT=54d007f813f03dd1bfcaf1597e6e3a3d223b64e2&UID=40326048107539&CT=1765828516060&SF=ZHUANZHUAN&SCT=1765832116060&V=2&K=1765814460&ET=1768420516060&AP=16"; Max-Age=2592000; Expires=Wed, 14 Jan 2026 19:55:16 GMT;; app-apn=WIFI; app-os=iOS; app-osv=26.0.1; app-resolution=1170x2532; brand=Apple; brandUpgradeAB=0; dualTrackCateAbSwitch=1; dualTrackFinenessAbRaw=C; dualTrackFinenessAbSwitch=1; feedRecommendation=0; isoffline=0; lat=0.000000; lon=0.000000; luxurySpecialItem=3; model=iPhone13%2C2; officialVerifyUnifyAB=C; platformUpgradeLuxin=3; platformUpgradeRaw=9311; platformUpgradeSwitch=1; platformUpgradeYumi=1; request_remove_latlon=0; t=16; tk=3ea0c8ffd7fe91f43530cfbc3d60caa7a84a0871; uid=40326048107539; v=11.21.5; zz_t=16; h5checkin_channel=h5plpages_homebottom; id58=CigAVmlAbR5US5HTFXY+Ag==; goods-token="d778e2af74c2549dd7798bb5b96502c8,bvs8t/FhQxbU3pnI0m7ABw0Ij6e2mnnmbvdt2WEjHy3SdT9KJmav6J5ioGoJH90PR/RC1p4PviGpexsKtIx7QA=="; zlj_group_id=13; ZZ_SHOP_CHANNEL_ID=2001; srv_dualTrackCateTestKey=1; srv_orderAddressChangeAb=1; srv_searchFilterMergeAB=0; zpm=2%5EimServiceNewHome%5E101%5E0-apply_after_sales%5E0; referrerObj=%7B%22refpagetype%22%3A%22C8524%22%2C%22refpagequery%22%3A%22channel%3DBM_MXZNEW02%22%2C%22refsubpageID%22%3A%22%22%2C%22refsectionId%22%3A%22%22%2C%22refsortId%22%3A%22%22%7D; zzVisitStack=%5B%7B%22type%22%3A%22onShow%22%2C%22href%22%3A%22m.zhuanzhuan.com%2Fu%2Fnode_ssr_bm%2Fhome%22%2C%22time%22%3A1765737076843%7D%2C%7B%22type%22%3A%22onShow%22%2C%22href%22%3A%22m.zhuanzhuan.com%252Fu%252Fnode_ssr_bm%252Fhome%22%2C%22time%22%3A1765742894388%7D%5D; Domain=58.com; Expires=Sat,10 Jan 2026 22:44:57 GMT; Max-Age=2592000; Path=/; Version=1; idzz=CigARGkopZMJ0TKhEPjyAg==; refsortId=2; srv_ck2=ck2value
+
+
+HTTP/1.1 200 OK
+Server: Tengine
+Date: Mon, 15 Dec 2025 20:18:57 GMT
+Content-Type: application/json; charset=UTF-8
+Connection: keep-alive
+Vary: Accept-Encoding
+access-control-allow-origin: https://m.zhuanzhuan.com
+vary: origin
+access-control-allow-credentials: true
+access-control-expose-headers: Trace-Id
+Trace-Id: 69406d310a2b7835000000682948f6bb
+Content-Length: 1765
+
+{"respData":{"orderList":[{"dataType":"2","isCheckOrder":false,"orderId":"1943129543845019665","status":"70","statusInfo":"出售中","userId":"40326048107539","infoTitle":"打包寄卖","userNickName":"平台寄卖","userPic":"https://pic2.zhuanstatic.com/zhuanzh/25d45e11-f862-4395-b7e0-6983f60165d6.png","userPicType":"0","infoList":[{"infoId":"1943129543454953472","pics":"https://pic1.zhuanstatic.com/athena/a2e02972-4c05-4397-a307-7dbd64c270a7.jpg","buyNum":"1","title":"打包寄卖","operationList":[],"infoOperationList":[],"metric":"OrderDetail","isClipping":"0"}],"childOrderList":[{"childOrderId":"1943510063935128085","pics":"https://pic1.zhuanstatic.com/zhuanzh/d8783d45-9e76-4d8d-affa-f4ca61e958f3.jpg","price":"5938.00","priceNum":"593800","statusTip":"出售中"},{"childOrderId":"1943510063930933269","pics":"https://pic1.zhuanstatic.com/zhuanzh/0a612a61-54ec-422c-9750-27ca0b393db2.jpg","price":"158.00","priceNum":"15800","statusTip":"出售中"},{"childOrderId":"1943510063935129109","pics":"https://pic1.zhuanstatic.com/zhuanzh/aa19ca53-41f8-469c-b3bf-c4ec2f9eb2fc.jpg","price":"4968.00","priceNum":"496800","statusTip":"已售出"}],"infoTotalNum":"1","tip":{"content":"平台已将包裹拆分成<span style=\"color: #F69A42\">3</span>个商品订单"},"notice":{"title":"质检完成","content":"等待您确认质检结果"},"jumpType":"1","jumpOrderDetail":"https://m.zhuanzhuan.com/u/bm-consign/order/detail?orderId=1943129543845019665&needHideHead=3","leftOperationList":[],"operationInfo":[],"isFinish":"0","orderUnDelMsg":"订单尚未结束，不支持删除哦~","securityTrade":{"buyerHadRecord":"0","sellerHadRecord":"0","orderId":"1943129543845019665"},"createTime":"1752113159511","updateTime":"1752559213014"}]},"respCode":"0"}

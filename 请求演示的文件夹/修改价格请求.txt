@@ -1,0 +1,32 @@
+GET https://app.zhuanzhuan.com/zzopen/c2b_consignment/changePrice?argueSwitch=true&buyPrice=0&orderId=1943510436158637077&infoPrice=49800&infoShowPrice=19800&selectedFastWithdrawService=0 HTTP/1.1
+Host: app.zhuanzhuan.com
+Accept: application/json, text/plain, */*
+Csrf-Token: 121d352ca1eb762cbd6d90803e83904e8024c46b
+Sec-Fetch-Site: same-site
+Accept-Encoding: gzip, deflate, br
+Accept-Language: zh-CN,zh-Hans;q=0.9
+Sec-Fetch-Mode: cors
+Content-Type: application/x-www-form-urlencoded
+Origin: https://m.zhuanzhuan.com
+User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 zzVersion/11.21.5 zzT/16 zzDevice/1_141.0_3.0 zzApp/58ZhuanZhuan
+Referer: https://m.zhuanzhuan.com/
+Connection: keep-alive
+Sec-Fetch-Dest: empty
+Cookie: t=16; tk=3ea0c8ffd7fe91f43530cfbc3d60caa7a84a0871; zz_t=16; id58=CigADGlAgboff1aOFgkRAg==; PPU="TT=121d352ca1eb762cbd6d90803e83904e8024c46b&UID=1605260075493237632&CT=1765835131650&SF=ZHUANZHUAN&SCT=1765838731650&V=2&K=1765814460&ET=1768427131650&AP=16"; Max-Age=2592000; Expires=Wed, 14 Jan 2026 21:45:31 GMT;; Safe-PPU="TT=121d352ca1eb762cbd6d90803e83904e8024c46b&UID=1605260075493237632&CT=1765835131650&SF=ZHUANZHUAN&SCT=1765838731650&V=2&K=1765814460&ET=1768427131650&AP=16"; Max-Age=2592000; Expires=Wed, 14 Jan 2026 21:45:31 GMT;; app-apn=WIFI; app-os=iOS; app-osv=26.0.1; app-resolution=1170x2532; brand=Apple; brandUpgradeAB=0; dualTrackCateAbSwitch=1; dualTrackFinenessAbRaw=C; dualTrackFinenessAbSwitch=1; feedRecommendation=; isoffline=0; lat=0.000000; lon=0.000000; luxurySpecialItem=3; model=iPhone13%2C2; officialVerifyUnifyAB=C; platformUpgradeLuxin=3; platformUpgradeRaw=9311; platformUpgradeSwitch=1; platformUpgradeYumi=1; request_remove_latlon=0; uid=1605260075493237632; v=11.21.5; zzreferer=https%3A%2F%2Fm.zhuanzhuan.com%2Fu%2Fbm-consign%2Forder%2Fdetail; h5checkin_channel=h5plpages_homebottom; goods-token="d778e2af74c2549dd7798bb5b96502c8,bvs8t/FhQxbU3pnI0m7ABw0Ij6e2mnnmbvdt2WEjHy3SdT9KJmav6J5ioGoJH90PR/RC1p4PviGpexsKtIx7QA=="; zlj_group_id=13; srv_dualTrackCateTestKey=1; srv_orderAddressChangeAb=1; srv_searchFilterMergeAB=0; zpm=2%5EimServiceNewHome%5E101%5E0-apply_after_sales%5E0; referrerObj=%7B%22refpagetype%22%3A%22C8524%22%2C%22refpagequery%22%3A%22channel%3DBM_MXZNEW02%22%2C%22refsubpageID%22%3A%22%22%2C%22refsectionId%22%3A%22%22%2C%22refsortId%22%3A%22%22%7D; zzVisitStack=%5B%7B%22type%22%3A%22onShow%22%2C%22href%22%3A%22m.zhuanzhuan.com%2Fu%2Fnode_ssr_bm%2Fhome%22%2C%22time%22%3A1765737076843%7D%2C%7B%22type%22%3A%22onShow%22%2C%22href%22%3A%22m.zhuanzhuan.com%252Fu%252Fnode_ssr_bm%252Fhome%22%2C%22time%22%3A1765742894388%7D%5D; Domain=58.com; Expires=Sat,10 Jan 2026 22:44:57 GMT; Max-Age=2592000; Path=/; Version=1; idzz=CigARGkopZMJ0TKhEPjyAg==; refsortId=2; srv_ck2=ck2value
+
+
+HTTP/1.1 200 OK
+Server: Tengine
+Date: Mon, 15 Dec 2025 21:49:25 GMT
+Content-Type: application/json;charset=UTF-8
+Connection: keep-alive
+Vary: Accept-Encoding
+Access-Control-Allow-Origin: https://m.zhuanzhuan.com
+Access-Control-Allow-Credentials: true
+traceId: 694082640a2b2ebc0000003b1ac7632e
+Access-Control-Expose-Headers: traceId
+Content-Length: 79
+
+{"respCode":0,"respData":{
+  "optResult": true
+},"errorMsg":"null","errMsg":""}
