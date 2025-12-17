@@ -11,9 +11,10 @@ export const PaymentConfig: React.FC = () => {
     const [newCookie, setNewCookie] = useState('');
 
     // Config State (Saved to localStorage for now as simple preference, or we could add to a config file)
-    const [pullMode, setPullMode] = useState<'specific' | 'random'>(localStorage.getItem('pullMode') as any || 'random');
-    const [productMode, setProductMode] = useState<'shop' | 'random'>(localStorage.getItem('productMode') as any || 'random');
-    const [validityDuration, setValidityDuration] = useState<number>(180); // Default 3 mins
+    const [pullMode, setPullMode] = useState<'specific' | 'random'>('random');
+    const [productMode, setProductMode] = useState<'shop' | 'random'>('random');
+    const [validityDuration, setValidityDuration] = useState<number>(180);
+    const [saving, setSaving] = useState(false);
 
     useEffect(() => {
         // Fetch System Settings
@@ -21,8 +22,11 @@ export const PaymentConfig: React.FC = () => {
             .then(res => res.json())
             .then(data => {
                 if (data.validityDuration) setValidityDuration(Number(data.validityDuration));
+                if (data.pullMode) setPullMode(data.pullMode);
+                if (data.productMode) setProductMode(data.productMode);
             })
             .catch(console.error);
+
 
         fetch(getApiUrl('buyers'))
             .then(res => res.json())
@@ -70,21 +74,24 @@ export const PaymentConfig: React.FC = () => {
         saveBuyers(updated);
     };
 
-    // Persist config settings
-    useEffect(() => {
-        localStorage.setItem('pullMode', pullMode);
-        localStorage.setItem('productMode', productMode);
-    }, [pullMode, productMode]);
-
-    const saveSettings = async (duration: number) => {
+    const handleSaveSettings = async () => {
+        setSaving(true);
         try {
             await fetch(getApiUrl('settings'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ validityDuration: duration })
+                body: JSON.stringify({
+                    validityDuration,
+                    pullMode,
+                    productMode
+                })
             });
+            alert('策略配置已保存');
         } catch (e) {
             console.error(e);
+            alert('保存失败，请检查网络');
+        } finally {
+            setSaving(false);
         }
     };
 
@@ -163,7 +170,7 @@ export const PaymentConfig: React.FC = () => {
                                     onChange={e => {
                                         const val = parseInt(e.target.value) || 60;
                                         setValidityDuration(val);
-                                        saveSettings(val);
+                                        // saveSettings(val); // Removed auto-save
                                     }}
                                 />
                                 <span className="text-slate-500 text-sm">秒</span>
@@ -171,6 +178,17 @@ export const PaymentConfig: React.FC = () => {
                             <p className="text-xs text-slate-400 mt-2">
                                 支付链接生成后的有效时间，超时后订单将自动取消。
                             </p>
+                        </div>
+
+                        <div className="pt-4 border-t border-slate-100">
+                            <button
+                                onClick={handleSaveSettings}
+                                disabled={saving}
+                                className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white py-3 rounded-lg font-bold transition-colors flex items-center justify-center gap-2"
+                            >
+                                <Save className="w-5 h-5" />
+                                <span>{saving ? '保存中...' : '保存策略配置'}</span>
+                            </button>
                         </div>
                     </div>
                 </div>

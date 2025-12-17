@@ -26,8 +26,10 @@ node_modules
 .env.test.local
 .env.production.local
 
-# JSON Data (Optional: Ignore if you don't want to overwrite server data)
-# For now, let's include them as starters, but user should be careful.
-# shops.json
-# orders.json
-# buyers.json
+
+# JSON Data (Ignored to prevent conflicts and data overwrites)
+shops.json
+orders.json
+buyers.json
+settings.json
+payment_pages.json
