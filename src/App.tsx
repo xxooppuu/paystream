@@ -69,7 +69,7 @@ const App: React.FC = () => {
 
     try {
       // 1. Get Buyer Cookie
-      const bRes = await fetch('http://localhost:3001/buyers');
+      const bRes = await fetch(getApiUrl('buyers'));
       if (!bRes.ok) return false;
       const buyers: any[] = await bRes.json();
       const buyer = buyers.find((b: any) => b.id === order.buyerId);
@@ -82,7 +82,7 @@ const App: React.FC = () => {
       // According to '取消订单.txt', POST to https://app.zhuanzhuan.com/zzx/transfer/cancelOrder
       // Body: cancelReason=不想要了&orderId=...
 
-      const proxyRes = await fetch('http://localhost:3001/proxy', {
+      const proxyRes = await fetch(PROXY_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -118,7 +118,7 @@ const App: React.FC = () => {
   const releaseInventoryForOrder = async (order: Order) => {
     if (!order.inventoryId) return;
 
-    const sRes = await fetch('http://localhost:3001/shops');
+    const sRes = await fetch(getApiUrl('shops'));
     if (sRes.ok) {
       const shops: any[] = await sRes.json();
       let shopsChanged = false;
@@ -138,7 +138,7 @@ const App: React.FC = () => {
       });
 
       if (shopsChanged) {
-        await fetch('http://localhost:3001/shops', {
+        await fetch(getApiUrl('shops'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(newShops)
@@ -161,7 +161,7 @@ const App: React.FC = () => {
       setOrders(updatedOrders);
 
       // Persist Order
-      await fetch('http://localhost:3001/orders', {
+      await fetch(getApiUrl('orders'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updatedOrders) // Saving reversed list is risky if backend expects order? No, upsert is usually whole list in this app.
@@ -188,7 +188,7 @@ const App: React.FC = () => {
     const checkExpiredOrders = async () => {
       try {
         // 1. Fetch latest orders
-        const oRes = await fetch('http://localhost:3001/orders');
+        const oRes = await fetch(getApiUrl('orders'));
         if (!oRes.ok) return;
         const allOrders: Order[] = await oRes.json();
 
@@ -235,7 +235,7 @@ const App: React.FC = () => {
         if (!hasChanges) return;
 
         // 3. Save updated orders
-        await fetch('http://localhost:3001/orders', {
+        await fetch(getApiUrl('orders'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(updatedOrders)
@@ -264,7 +264,7 @@ const App: React.FC = () => {
 
     try {
       // 1. Get Buyer Cookie
-      const bRes = await fetch('http://localhost:3001/buyers');
+      const bRes = await fetch(getApiUrl('buyers'));
       const buyers: any[] = await bRes.json();
       const buyer = buyers.find((b: any) => b.id === order.buyerId);
       if (!buyer) {
@@ -276,7 +276,7 @@ const App: React.FC = () => {
       // https://app.zhuanzhuan.com/zz/transfer/getOrder?mversion=3&orderId=...&abGroup=2
       const targetUrl = `https://app.zhuanzhuan.com/zz/transfer/getOrder?mversion=3&orderId=${order.id}&abGroup=2`;
 
-      const proxyRes = await fetch('http://localhost:3001/proxy', {
+      const proxyRes = await fetch(PROXY_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
