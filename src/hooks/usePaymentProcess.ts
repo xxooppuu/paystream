@@ -140,7 +140,9 @@ export const usePaymentProcess = () => {
             attempts++;
             // Fetch Fresh with Timestamp to avoid cache
             const sRes = await fetch(getApiUrl(`shops?_t=${Date.now()}`));
-            const freshAccounts: StoreAccount[] = await sRes.json();
+            let freshAccounts: StoreAccount[] = await sRes.json();
+            if (!Array.isArray(freshAccounts)) freshAccounts = [];
+
             const freshInventory = freshAccounts.flatMap(a => a.inventory || []);
             setAccounts(freshAccounts);
 
