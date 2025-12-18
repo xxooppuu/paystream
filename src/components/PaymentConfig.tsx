@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, Save, User, Settings, Info } from 'lucide-react';
+import { Plus, Trash2, Save, User, Settings, Info, Edit, X, MapPin, Loader2, CheckCircle } from 'lucide-react';
 import { BuyerAccount } from '../types';
-import { getApiUrl } from '../config';
+import { getApiUrl, PROXY_URL } from '../config';
 
 export const PaymentConfig: React.FC = () => {
     const [buyers, setBuyers] = useState<BuyerAccount[]>([]);
@@ -10,13 +10,22 @@ export const PaymentConfig: React.FC = () => {
     const [newRemark, setNewRemark] = useState('');
     const [newCookie, setNewCookie] = useState('');
 
-    // Config State (Saved to localStorage for now as simple preference, or we could add to a config file)
+    // Editing State
+    const [editingBuyer, setEditingBuyer] = useState<BuyerAccount | null>(null);
+    const [editRemark, setEditRemark] = useState('');
+    const [editCookie, setEditCookie] = useState('');
+    const [editAddressId, setEditAddressId] = useState('');
+    const [editAddressName, setEditAddressName] = useState('');
+    const [fetchingAddr, setFetchingAddr] = useState(false);
+    const [addressList, setAddressList] = useState<any[]>([]);
+
+    // Config State
     const [pullMode, setPullMode] = useState<'specific' | 'random'>('random');
     const [productMode, setProductMode] = useState<'shop' | 'random'>('random');
     const [validityDuration, setValidityDuration] = useState<number>(180);
     const [specificBuyerId, setSpecificBuyerId] = useState<string>('');
     const [specificShopId, setSpecificShopId] = useState<string>('');
-    const [shops, setShops] = useState<any[]>([]); // Need shops for dropdown
+    const [shops, setShops] = useState<any[]>([]);
     const [saving, setSaving] = useState(false);
 
     useEffect(() => {
@@ -78,10 +87,70 @@ export const PaymentConfig: React.FC = () => {
     };
 
     const removeBuyer = (id: string) => {
+        if (!window.confirm('确定要删除该账号吗？')) return;
         const updated = buyers.filter(b => b.id !== id);
         setBuyers(updated);
         saveBuyers(updated);
     };
+
+    // Edit Logic
+    const openEdit = (buyer: BuyerAccount) => {
+        setEditingBuyer(buyer);
+        setEditRemark(buyer.remark);
+        setEditCookie(buyer.cookie);
+        setEditAddressId(buyer.addressId || '');
+        setEditAddressName(buyer.addressName || '');
+        setAddressList([]);
+    };
+
+    const closeEdit = () => {
+        setEditingBuyer(null);
+        setAddressList([]);
+    };
+
+    const fetchAddresses = async () => {
+        if (!editCookie) return alert('请先填写 Cookie');
+        setFetchingAddr(true);
+        setAddressList([]);
+        try {
+            const res = await fetch(PROXY_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    targetUrl: `https://app.zhuanzhuan.com/zz/transfer/getAllAddress?_t=${Date.now()}`,
+                    cookie: editCookie,
+                    method: 'GET'
+                })
+            });
+            const data = await res.json();
+            if (data.respCode === '0' && Array.isArray(data.respData)) {
+                setAddressList(data.respData);
+                if (data.respData.length === 0) alert('该账号未查询到收货地址');
+            } else {
+                alert('地址获取失败: ' + (data.errorMsg || 'Unknown Error'));
+            }
+        } catch (e) {
+            console.error(e);
+            alert('请求失败，请检查网络');
+        } finally {
+            setFetchingAddr(false);
+        }
+    };
+
+    const saveEdit = () => {
+        if (!editingBuyer) return;
+        const updated = buyers.map(b => b.id === editingBuyer.id ? {
+            ...b,
+            remark: editRemark,
+            cookie: editCookie,
+            addressId: editAddressId,
+            addressName: editAddressName
+        } : b);
+        setBuyers(updated);
+        saveBuyers(updated);
+        closeEdit();
+    };
+
 
     const handleSaveSettings = async () => {
         setSaving(true);
@@ -107,7 +176,95 @@ export const PaymentConfig: React.FC = () => {
     };
 
     return (
-        <div className="space-y-6 animate-fade-in pb-20">
+        <div className="space-y-6 animate-fade-in pb-20 relative">
+            {/* Edit Modal */}
+            {editingBuyer && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto flex flex-col">
+                        <div className="p-6 border-b border-slate-100 flex justify-between items-center sticky top-0 bg-white z-10">
+                            <h3 className="text-xl font-bold text-slate-800">编辑拉单账号</h3>
+                            <button onClick={closeEdit} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
+                                <X className="w-5 h-5 text-slate-500" />
+                            </button>
+                        </div>
+
+                        <div className="p-6 space-y-6">
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-2">备注名称</label>
+                                <input
+                                    className="w-full px-4 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"
+                                    value={editRemark}
+                                    onChange={e => setEditRemark(e.target.value)}
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-2">Cookie</label>
+                                <textarea
+                                    className="w-full px-4 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 font-mono text-xs h-24"
+                                    value={editCookie}
+                                    onChange={e => setEditCookie(e.target.value)}
+                                />
+                            </div>
+
+                            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                                <div className="flex justify-between items-center mb-4">
+                                    <div>
+                                        <h4 className="font-bold text-slate-800 flex items-center gap-2">
+                                            <MapPin className="w-4 h-4 text-indigo-600" />
+                                            <span>固定收货地址 (可选)</span>
+                                        </h4>
+                                        <p className="text-xs text-slate-500 mt-1">设置后将直接使用该地址ID，不再重复请求地址接口</p>
+                                    </div>
+                                    <button
+                                        onClick={fetchAddresses}
+                                        disabled={fetchingAddr}
+                                        className="bg-white border border-slate-300 hover:bg-indigo-50 hover:text-indigo-600 px-3 py-1.5 rounded-lg text-sm transition-colors flex items-center gap-2 shadow-sm"
+                                    >
+                                        {fetchingAddr ? <Loader2 className="w-3 h-3 animate-spin" /> : <Settings className="w-3 h-3" />}
+                                        <span>读取地址列表</span>
+                                    </button>
+                                </div>
+
+                                {editAddressId && (
+                                    <div className="flex items-center gap-2 text-sm text-green-700 bg-green-50 p-3 rounded-lg border border-green-100 mb-4">
+                                        <CheckCircle className="w-4 h-4" />
+                                        <span>当前已绑定地址: {editAddressName || editAddressId}</span>
+                                        <button onClick={() => { setEditAddressId(''); setEditAddressName(''); }} className="text-xs underline text-green-800 ml-auto">清除</button>
+                                    </div>
+                                )}
+
+                                {addressList.length > 0 && (
+                                    <div className="space-y-2 max-h-48 overflow-y-auto">
+                                        {addressList.map((addr: any) => (
+                                            <div
+                                                key={addr.id}
+                                                onClick={() => {
+                                                    setEditAddressId(addr.id);
+                                                    setEditAddressName(`${addr.name} ${addr.mobile} ${addr.address}`);
+                                                }}
+                                                className={`p-3 rounded-lg border cursor-pointer border-slate-200 hover:border-indigo-500 transition-all ${editAddressId === addr.id ? 'bg-indigo-50 border-indigo-500 ring-1 ring-indigo-500' : 'bg-white'}`}
+                                            >
+                                                <div className="flex justify-between">
+                                                    <span className="font-bold text-sm text-slate-800">{addr.name} {addr.mobile}</span>
+                                                    {addr.isDefault === '1' && <span className="bg-red-100 text-red-600 text-[10px] px-1.5 py-0.5 rounded">默认</span>}
+                                                </div>
+                                                <div className="text-xs text-slate-500 mt-1 truncate">{addr.address}</div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="p-6 border-t border-slate-100 flex justify-end gap-3 sticky bottom-0 bg-white">
+                            <button onClick={closeEdit} className="px-5 py-2 text-slate-500 hover:bg-slate-100 rounded-lg transition-colors">取消</button>
+                            <button onClick={saveEdit} className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold shadow-lg shadow-indigo-200 transition-colors">保存更改</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <div>
                 <h2 className="text-2xl font-bold text-slate-800">通道配置</h2>
                 <p className="text-slate-500 text-sm">配置转转支付通道的拉单账号与策略</p>
@@ -287,12 +444,22 @@ export const PaymentConfig: React.FC = () => {
                                 </div>
                             </div>
                         </div>
-                        <button
-                            onClick={() => removeBuyer(buyer.id)}
-                            className="p-2 text-slate-400 hover:text-red-600 hover:bg-slate-50 rounded-lg transition-colors"
-                        >
-                            <Trash2 className="w-4 h-4" />
-                        </button>
+                        <div className="flex items-center gap-1">
+                            <button
+                                onClick={() => openEdit(buyer)}
+                                className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-slate-50 rounded-lg transition-colors"
+                                title="编辑/设置地址"
+                            >
+                                <Edit className="w-4 h-4" />
+                            </button>
+                            <button
+                                onClick={() => removeBuyer(buyer.id)}
+                                className="p-2 text-slate-400 hover:text-red-600 hover:bg-slate-50 rounded-lg transition-colors"
+                                title="删除账号"
+                            >
+                                <Trash2 className="w-4 h-4" />
+                            </button>
+                        </div>
                     </div>
                 ))}
                 {buyers.length === 0 && (

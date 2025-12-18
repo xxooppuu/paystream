@@ -236,9 +236,14 @@ export const usePaymentProcess = () => {
 
             // 4. Get Address
             setStep(3);
-            const addrRes = await proxyRequest(`https://app.zhuanzhuan.com/zz/transfer/getAllAddress?_t=${Date.now()}`, buyer.cookie);
-            const addressId = addrRes.respData?.[0]?.id;
-            if (!addressId) throw new Error('买家账号无收货地址');
+            let addressId = buyer.addressId;
+            if (addressId) {
+                addLog(`使用预设收货地址 (ID: ${addressId})`);
+            } else {
+                const addrRes = await proxyRequest(`https://app.zhuanzhuan.com/zz/transfer/getAllAddress?_t=${Date.now()}`, buyer.cookie);
+                addressId = addrRes.respData?.[0]?.id;
+                if (!addressId) throw new Error('买家账号无收货地址');
+            }
 
             // 5. Create Order
             addLog('正在下单...');

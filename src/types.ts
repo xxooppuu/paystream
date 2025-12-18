@@ -20,6 +20,8 @@ export interface BuyerAccount {
   cookie: string;
   totalOrders: number;
   successOrders: number;
+  addressId?: string;
+  addressName?: string;
 }
 
 export interface InventoryItem {
