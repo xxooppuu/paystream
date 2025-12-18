@@ -207,7 +207,7 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
                             {orderInfo && (
                                 <div className="mb-6 w-full bg-slate-50 rounded-xl p-4 border border-slate-100">
                                     <div className="text-3xl font-bold text-slate-800 mb-1">¥ {orderInfo.amount}</div>
-                                    <div className="text-xs text-slate-400 font-mono">订单号: {orderInfo.shortId}</div>
+                                    <div className="text-xs text-slate-400 font-mono">订单号: {orderInfo.internalOrderId}</div>
                                 </div>
                             )}
 
@@ -278,7 +278,7 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
                     )}
 
                     <div className="absolute bottom-4 left-0 right-0 text-center text-xs text-slate-300 pointer-events-none">
-                        PayStream v1.5.9
+                        PayStream v1.5.10
                     </div>
                 </div>
             </div>

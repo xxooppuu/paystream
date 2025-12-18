@@ -409,7 +409,8 @@ export const usePaymentProcess = () => {
             else throw new Error('无法解析最终支付链接');
 
             setStep(5);
-            return { shortId, amount }; // Return data for UI
+            const internalOrderId = `T${newOrderId}`;
+            return { internalOrderId, amount }; // Return data for UI
 
         } catch (e: any) {
             setError(e.message);

@@ -336,7 +336,7 @@ const App: React.FC = () => {
           }
           alert(msg);
         } else {
-          alert(`查询失败: ${res.errorMsg || '未知错误'}`);
+          alert(`查询失败: Code=${res.respCode}, Msg=${res.errorMsg || '未知错误'}`);
         }
       } // Close if respCode === '0'
     } catch (e: any) {
@@ -521,7 +521,7 @@ const App: React.FC = () => {
           </div>
           {/* Version Footer */}
           <div className="fixed bottom-4 right-4 text-xs text-slate-400 bg-white px-3 py-1 rounded-full shadow-sm border border-slate-200">
-            Admin v1.5.9
+            Admin v1.5.10
           </div>
         </main>
       </div>
