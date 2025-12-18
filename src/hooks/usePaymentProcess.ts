@@ -257,6 +257,7 @@ export const usePaymentProcess = () => {
             let item: InventoryItem | undefined;
             let freshAccounts: StoreAccount[] = [];
             let buyer: BuyerAccount | undefined;
+            const targetCents = Math.round(amount * 100);
 
             while (!isPriceChanged) {
                 // 1. Inventory Match
@@ -298,7 +299,6 @@ export const usePaymentProcess = () => {
                 if (!seller) throw new Error('卖家账号异常');
 
                 setStep(2);
-                const targetCents = Math.round(amount * 100);
                 if (excludeIds.length === 0) addLog(`正在改价为 ¥${amount}...`);
 
                 const changePriceWithId = async (oid: string, isParent: boolean = false) => {
