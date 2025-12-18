@@ -163,12 +163,12 @@ export const usePaymentProcess = () => {
 
                 // If occupied but missing lastMatchedTime, treat as stuck/expired
                 if (isOccupied && !i.lastMatchedTime) {
-                    addLog(`⚠️ 发现异常占用 (无时间戳): ${i.title.substring(0, 20)}...`);
+                    addLog(`⚠️ 发现异常占用 (无时间戳): ${i.parentTitle.substring(0, 20)}...`);
                     return true; // Should be available
                 }
 
                 const isExpired = isOccupied && i.lastMatchedTime && (Date.now() - i.lastMatchedTime > validityMs);
-                if (isExpired) addLog(`⏰ 锁定过期: ${i.title.substring(0, 20)}...`);
+                if (isExpired) addLog(`⏰ 锁定过期: ${i.parentTitle.substring(0, 20)}...`);
 
                 // If it's idle, OR it's occupied but expired, we consider it available
                 const isInternalAvailable = (i.internalStatus === 'idle' || !i.internalStatus || isExpired);
