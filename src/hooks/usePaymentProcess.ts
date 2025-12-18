@@ -165,10 +165,13 @@ export const usePaymentProcess = () => {
                 // Defensive check
                 if (!i) return false;
 
-                // 1. Relaxed Status Check
+                // 1. Relaxed Status Check? NO. Strict Check requested by User.
                 const status = i.status || '';
-                // Match '售' (出售, 在售, etc) OR 'active' OR 'on_sale'
-                const isStatusOk = status.includes('售') || status === 'active' || status.includes('sale') || status.includes('Normal');
+                // EXCLUDE '已售出' (Sold Out) explicitly
+                if (status.includes('已售出') || status.includes('Sold')) return false;
+
+                // Only allow '出售中', 'active', 'sale', 'Normal'
+                const isStatusOk = status.includes('出售') || status === 'active' || status.includes('sale') || status.includes('Normal');
 
                 if (!isStatusOk) {
                     if (attempts === 1) console.log(`[Debug] 跳过商品 ${i.id}: 状态为 '${status}'`);
@@ -178,21 +181,17 @@ export const usePaymentProcess = () => {
                 // 2. Internal Status Check
                 const isOccupied = i.internalStatus === 'occupied';
 
-                // If occupied but missing lastMatchedTime, treat as available (stuck)
+                // REMOVED "Auto Repair" logic that was unlocking occupied items without timestamp
+                // This was causing the "random occupied item" issue.
                 if (isOccupied && !i.lastMatchedTime) {
-                    addLog(`⚠️ 自动修复: 发现无时间戳占用的商品 ${i.parentTitle?.substring(0, 10)}...`);
-                    return true;
+                    // Treat as truly occupied to be safe
+                    return false;
                 }
 
                 const isExpired = isOccupied && i.lastMatchedTime && (Date.now() - i.lastMatchedTime > validityMs);
 
                 // 3. Final Availability Check
                 const isInternalAvailable = (i.internalStatus === 'idle' || !i.internalStatus || isExpired);
-
-                if (!isInternalAvailable && attempts === 1) {
-                    // Optional: Log why it's not available if needed, but 'occupied' is standard
-                    // console.log(`[Debug] 商品 ${i.id} 被占用`);
-                }
 
                 return isInternalAvailable;
             }).filter(i => {
@@ -257,6 +256,7 @@ export const usePaymentProcess = () => {
             let item: InventoryItem | undefined;
             let freshAccounts: StoreAccount[] = [];
             let buyer: BuyerAccount | undefined;
+            // CORRECTLY DEFINED IN OUTER SCOPE
             const targetCents = Math.round(amount * 100);
 
             while (!isPriceChanged) {
@@ -301,22 +301,16 @@ export const usePaymentProcess = () => {
                 setStep(2);
                 if (excludeIds.length === 0) addLog(`正在改价为 ¥${amount}...`);
 
-                const changePriceWithId = async (oid: string, isParent: boolean = false) => {
+                const changePriceWithId = async (oid: string) => {
                     const url = `https://app.zhuanzhuan.com/zzopen/c2b_consignment/changePrice?argueSwitch=true&buyPrice=0&orderId=${oid}&infoPrice=${targetCents}&infoShowPrice=${targetCents}&selectedFastWithdrawService=0`;
                     const res = await proxyRequest(url, seller.cookie);
                     return res;
                 };
 
-                // Attempt 1: Child Order ID
+                // Attempt 1: Child Order ID ONLY (User requested original logic)
                 let cpRes = await changePriceWithId(item!.childOrderId);
 
-                // Retry Mechanism: If "Operation not supported", try Parent Order ID
-                if ((cpRes.respCode !== '0' && cpRes.respData?.optResult !== true)) {
-                    const errMsg = cpRes.errorMsg || '';
-                    if (item!.orderId && item!.orderId !== item!.childOrderId) {
-                        cpRes = await changePriceWithId(item!.orderId, true);
-                    }
-                }
+                // NO Parent ID Fallback here.
 
                 if (cpRes.respCode !== '0' && cpRes.respData?.optResult !== true) {
                     console.error('Price Change Failure:', cpRes);
