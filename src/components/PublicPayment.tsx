@@ -16,6 +16,14 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
     const [timeLeft, setTimeLeft] = useState<number | null>(null);
     const [queueTimeLeft, setQueueTimeLeft] = useState<number | null>(null);
     const [orderInfo, setOrderInfo] = useState<{ internalOrderId: string; amount: number } | null>(null);
+    const [isWeChat, setIsWeChat] = useState(false);
+
+    useEffect(() => {
+        const ua = navigator.userAgent.toLowerCase();
+        if (ua.match(/micromessenger/i)) {
+            setIsWeChat(true);
+        }
+    }, []);
 
     // Logic from the hook
     const { startPayment, cancelCurrentOrder, loading, logs, step, error, paymentLink, orderCreatedAt, queueEndTime, settings } = usePaymentProcess();
@@ -102,12 +110,45 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
         }
     };
 
+    // Helper Arrow Component
+    const ArrowUpRight = () => (
+        <svg width="60" height="60" viewBox="0 0 100 100" className="absolute top-4 right-6 text-white animate-bounce" style={{ filter: 'drop-shadow(0 0 5px rgba(0,0,0,0.5))' }}>
+            <path d="M 10 90 Q 50 10 80 20" stroke="currentColor" strokeWidth="3" fill="none" strokeDasharray="5,5" />
+            <path d="M 80 20 L 70 30 M 80 20 L 70 10" stroke="currentColor" strokeWidth="4" fill="none" />
+        </svg>
+    );
+
     if (loadingConfig) {
         return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-400">Loading...</div>;
     }
 
     if (!config) {
         return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-red-500 font-bold">无效的收款链接</div>;
+    }
+
+    if (isWeChat) {
+        return (
+            <div className="fixed inset-0 bg-slate-900/95 z-50 flex flex-col items-center justify-center p-6 text-white">
+                <ArrowUpRight />
+                <div className="bg-white/10 p-6 rounded-2xl backdrop-blur-sm text-center max-w-sm w-full border border-white/20 shadow-2xl">
+                    <div className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg">
+                        <Smartphone className="w-8 h-8 text-white" />
+                    </div>
+                    <h2 className="text-2xl font-bold mb-4">请在浏览器打开</h2>
+                    <p className="text-slate-200 mb-8 leading-relaxed">
+                        由于微信限制，无法直接完成支付。
+                        <br />
+                        请点击右上角 <span className="font-bold text-white mx-1 text-xl">···</span> 按钮
+                        <br />
+                        选择 <span className="font-bold text-yellow-400">在浏览器打开</span> 以继续。
+                    </p>
+                    <div className="flex items-center justify-center space-x-2 text-sm text-slate-400 bg-black/20 py-3 rounded-lg">
+                        <AlertCircle className="w-4 h-4" />
+                        <span>safari / chrome / default browser</span>
+                    </div>
+                </div>
+            </div>
+        );
     }
 
     const InfoBox = () => (
@@ -123,15 +164,26 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
     );
 
     return (
-        <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
-            <div className="bg-white w-full max-w-md rounded-2xl shadow-xl overflow-hidden">
+        <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
+            <div className="w-full max-w-md bg-white rounded-3xl shadow-xl overflow-hidden relative">
                 {/* Header */}
-                <div className="bg-indigo-600 p-6 text-center text-white">
-                    <h1 className="text-xl font-bold">{config.title}</h1>
-                    <p className="text-indigo-200 text-sm mt-1">安全支付收银台</p>
+                <div className="bg-gradient-to-r from-indigo-600 to-violet-600 p-8 text-white text-center relative overflow-hidden">
+                    <div className="absolute top-0 left-0 w-full h-full bg-white opacity-5 transform -skew-x-12"></div>
+                    <div className="relative z-10">
+                        <h1 className="text-2xl font-bold mb-1">{config.title || '安全支付收银台'}</h1>
+                        <p className="text-indigo-100 text-sm opacity-90">PayStream Secure Checkout</p>
+                    </div>
                 </div>
 
-                <div className="p-8 space-y-6">
+                {/* Content */}
+                <div className="p-8">
+                    {config.notice && (
+                        <div className="bg-blue-50 text-blue-700 text-sm p-4 rounded-xl mb-6 flex items-start">
+                            <AlertCircle className="w-5 h-5 mr-2 flex-shrink-0 mt-0.5" />
+                            <span>{config.notice}</span>
+                        </div>
+                    )}
+
                     {step === 0 && (
                         <>
                             <div>
@@ -278,7 +330,7 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
                     )}
 
                     <div className="absolute bottom-4 left-0 right-0 text-center text-xs text-slate-300 pointer-events-none">
-                        PayStream v1.5.15 (Build: {new Date().toLocaleTimeString()})
+                        PayStream v1.5.16 (Build: {new Date().toLocaleTimeString()})
                     </div>
                 </div>
             </div>
