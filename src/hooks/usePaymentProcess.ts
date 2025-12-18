@@ -156,14 +156,24 @@ export const usePaymentProcess = () => {
 
             const idleItems = freshInventory.filter(i => {
                 // Primary Filter: Must be '出售中' (ZZ status)
+                if (!i.status.includes('出售')) return false;
+
                 // Internal Status Check: 'idle' OR 'occupied' but expired
                 const isOccupied = i.internalStatus === 'occupied';
+
+                // If occupied but missing lastMatchedTime, treat as stuck/expired
+                if (isOccupied && !i.lastMatchedTime) {
+                    addLog(`⚠️ 发现异常占用 (无时间戳): ${i.title.substring(0, 20)}...`);
+                    return true; // Should be available
+                }
+
                 const isExpired = isOccupied && i.lastMatchedTime && (Date.now() - i.lastMatchedTime > validityMs);
+                if (isExpired) addLog(`⏰ 锁定过期: ${i.title.substring(0, 20)}...`);
 
                 // If it's idle, OR it's occupied but expired, we consider it available
                 const isInternalAvailable = (i.internalStatus === 'idle' || !i.internalStatus || isExpired);
 
-                return i.status.includes('出售') && isInternalAvailable;
+                return isInternalAvailable;
             }).filter(i => {
                 // Filter by Product Mode
                 if (freshSettings?.productMode === 'shop' && freshSettings?.specificShopId) {

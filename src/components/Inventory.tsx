@@ -232,16 +232,18 @@ export const Inventory: React.FC = () => {
     const handleReleaseAll = async () => {
         if (!confirm('确定要释放所有被占用的商品吗？这会导致未支付订单关联失效。')) return;
 
+        const occupiedCount = inventory.filter(i => i.internalStatus === 'occupied').length;
+
         const releasedInventory = inventory.map(item => ({
             ...item,
             internalStatus: item.internalStatus === 'occupied' ? 'idle' : item.internalStatus,
-            status: item.internalStatus === 'occupied' ? '在售(手动释放)' : item.status
+            lastMatchedTime: undefined // Clear the timestamp
         } as InventoryItem));
 
         setInventory(releasedInventory);
-        saveShopsToBackend(accounts, releasedInventory);
-        // Note: We don't update 'accounts' state inventory deep inside, but we should syncing it to be safe 
-        // though `saveShopsToBackend` reconstructs it.
+        await saveShopsToBackend(accounts, releasedInventory);
+
+        alert(`✅ 成功释放 ${occupiedCount} 个被占用的商品！`);
     };
 
     /**
