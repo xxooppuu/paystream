@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <title>Version Check</title>
+</head>
+
+<body>
+    <h1>Direct File Check</h1>
+    <p>If you see v1.3.0 below, the file is correct but being cached</p>
+    <div id="version"></div>
+    <script type="module">
+        // This will force load the exact file
+        const response = await fetch('/assets/index-Cej0o-YO.js?nocache=' + Date.now());
+        const content = await response.text();
+        const match = content.match(/PayStream v\d+\.\d+\.\d+/);
+        document.getElementById('version').textContent = match ? match[0] : 'Not found';
+    </script>
+</body>
+
+</html>
