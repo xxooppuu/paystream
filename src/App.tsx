@@ -521,7 +521,7 @@ const App: React.FC = () => {
           </div>
           {/* Version Footer */}
           <div className="fixed bottom-4 right-4 text-xs text-slate-400 bg-white px-3 py-1 rounded-full shadow-sm border border-slate-200">
-            Admin v1.5.3
+            Admin v1.5.5
           </div>
         </main>
       </div>
