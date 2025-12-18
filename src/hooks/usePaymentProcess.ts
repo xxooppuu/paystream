@@ -154,24 +154,43 @@ export const usePaymentProcess = () => {
             // Determine Validity Duration (Default 180s if not set)
             const validityMs = (freshSettings?.validityDuration ? Number(freshSettings.validityDuration) : 180) * 1000;
 
-            const idleItems = freshInventory.filter(i => {
-                // Primary Filter: Must be '出售中' (ZZ status)
-                if (!i.status.includes('出售')) return false;
+            // Detailed Logging for Debugging
+            if (attempts === 1) {
+                addLog(`🔍 扫描库存 (第${attempts}次): 从 ${freshInventory.length} 个商品中匹配...`);
+            }
 
-                // Internal Status Check: 'idle' OR 'occupied' but expired
+            const idleItems = freshInventory.filter(i => {
+                // Defensive check
+                if (!i) return false;
+
+                // 1. Relaxed Status Check
+                const status = i.status || '';
+                // Match '售' (出售, 在售, etc) OR 'active' OR 'on_sale'
+                const isStatusOk = status.includes('售') || status === 'active' || status.includes('sale') || status.includes('Normal');
+
+                if (!isStatusOk) {
+                    if (attempts === 1) console.log(`[Debug] 跳过商品 ${i.id}: 状态为 '${status}'`);
+                    return false;
+                }
+
+                // 2. Internal Status Check
                 const isOccupied = i.internalStatus === 'occupied';
 
-                // If occupied but missing lastMatchedTime, treat as stuck/expired
+                // If occupied but missing lastMatchedTime, treat as available (stuck)
                 if (isOccupied && !i.lastMatchedTime) {
-                    addLog(`⚠️ 发现异常占用 (无时间戳): ${i.parentTitle.substring(0, 20)}...`);
-                    return true; // Should be available
+                    addLog(`⚠️ 自动修复: 发现无时间戳占用的商品 ${i.parentTitle?.substring(0, 10)}...`);
+                    return true;
                 }
 
                 const isExpired = isOccupied && i.lastMatchedTime && (Date.now() - i.lastMatchedTime > validityMs);
-                if (isExpired) addLog(`⏰ 锁定过期: ${i.parentTitle.substring(0, 20)}...`);
 
-                // If it's idle, OR it's occupied but expired, we consider it available
+                // 3. Final Availability Check
                 const isInternalAvailable = (i.internalStatus === 'idle' || !i.internalStatus || isExpired);
+
+                if (!isInternalAvailable && attempts === 1) {
+                    // Optional: Log why it's not available if needed, but 'occupied' is standard
+                    // console.log(`[Debug] 商品 ${i.id} 被占用`);
+                }
 
                 return isInternalAvailable;
             }).filter(i => {
@@ -181,6 +200,10 @@ export const usePaymentProcess = () => {
                 }
                 return true;
             });
+
+            if (attempts === 1 && idleItems.length === 0 && freshInventory.length > 0) {
+                addLog(`⚠️ 警告: 找到 ${freshInventory.length} 个商品但无可用 (状态不符或被占用)`);
+            }
 
             if (idleItems.length > 0) {
                 // Found!
