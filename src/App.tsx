@@ -267,9 +267,9 @@ const App: React.FC = () => {
   }, [currentView]);
 
   // Manual Status Check Handler
-  const handleCheckOrderStatus = async (order: Order) => {
+  const handleCheckOrderStatus = async (order: Order, silent: boolean = false) => {
     if (!order.buyerId) {
-      alert('无法查询：该订单缺少买家信息 (旧订单)');
+      if (!silent) alert('无法查询：该订单缺少买家信息 (旧订单)');
       return;
     }
 
@@ -279,7 +279,7 @@ const App: React.FC = () => {
       const buyers: any[] = await bRes.json();
       const buyer = buyers.find((b: any) => b.id === order.buyerId);
       if (!buyer) {
-        alert('未找到买家账号');
+        if (!silent) alert('未找到买家账号');
         return;
       }
 
@@ -334,14 +334,14 @@ const App: React.FC = () => {
           if (newStatus === OrderStatus.SUCCESS || newStatus === OrderStatus.CANCELLED || newStatus === OrderStatus.REFUNDED) {
             await releaseInventoryForOrder(order);
           }
-          alert(msg);
+          if (!silent) alert(msg);
         } else {
           // Status matched, no update needed, but query was successful
-          alert(`查询成功: 订单状态正常。\n当前状态: ${statusInfo || '未知'} (Code: ${statusStr})`);
+          if (!silent) alert(`查询成功: 订单状态正常。\n当前状态: ${statusInfo || '未知'} (Code: ${statusStr})`);
         }
       } // Close if respCode === '0'
     } catch (e: any) {
-      alert(`请求异常: ${e.message}`);
+      if (!silent) alert(`请求异常: ${e.message}`);
     }
   };
 
@@ -382,6 +382,64 @@ const App: React.FC = () => {
     };
     checkBackend();
   }, []);
+
+  // NEW: Auto-Poll Status for Pending Orders (Every 5s)
+  useEffect(() => {
+    if (!orders || orders.length === 0) return;
+
+    const interval = setInterval(() => {
+      // Filter orders: PENDING and created within last 10 mins (600000ms)
+      const now = Date.now();
+      const tenMinsAgo = now - 10 * 60 * 1000;
+
+      const activePendingOrders = orders.filter(o => {
+        if (o.status !== OrderStatus.PENDING) return false;
+        const createdTime = new Date(o.createdAt).getTime();
+        return createdTime > tenMinsAgo;
+      });
+
+      if (activePendingOrders.length > 0) {
+        console.log(`Auto-polling ${activePendingOrders.length} pending orders...`);
+        // Check each one silently (no alert on success)
+        activePendingOrders.forEach(o => {
+          handleCheckOrderStatus(o, true);
+        });
+      }
+    }, 5000); // Check every 5s
+
+    return () => clearInterval(interval);
+  }, [orders]);
+
+  // NEW: Auto-Poll Status for Pending Orders (Every 5s)
+  useEffect(() => {
+    if (!orders || orders.length === 0) return;
+
+    const interval = setInterval(() => {
+      // Filter orders: PENDING and created within last 10 mins (600000ms)
+      const now = Date.now();
+      const tenMinsAgo = now - 10 * 60 * 1000;
+
+      const activePendingOrders = orders.filter(o => {
+        if (o.status !== OrderStatus.PENDING) return false;
+        const createdTime = new Date(o.createdAt).getTime();
+        return createdTime > tenMinsAgo;
+      });
+
+      if (activePendingOrders.length > 0) {
+        console.log(`Auto-polling ${activePendingOrders.length} pending orders...`);
+        // Check each one silently (no alert on success)
+        activePendingOrders.forEach(o => {
+          // Need a silent version of handleCheckOrderStatus
+          // For now, let's reuse handleCheckOrderStatus but we need to modify it to suppress alerts if auto-called?
+          // Or extract the logic. 
+          // Better: update handleCheckOrderStatus to accept a 'silent' flag.
+          handleCheckOrderStatus(o, true);
+        });
+      }
+    }, 5000); // Check every 5s
+
+    return () => clearInterval(interval);
+  }, [orders]);
 
   const handleLogout = () => {
     setIsLoggedIn(false);
@@ -522,7 +580,7 @@ const App: React.FC = () => {
           </div>
           {/* Version Footer */}
           <div className="fixed bottom-4 right-4 text-xs text-slate-400 bg-white px-3 py-1 rounded-full shadow-sm border border-slate-200">
-            Admin v1.5.16
+            Admin v1.5.17
           </div>
         </main>
       </div>
