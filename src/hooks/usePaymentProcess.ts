@@ -70,7 +70,7 @@ export const usePaymentProcess = () => {
 
     const saveOrderToBackend = async (
         status: OrderStatus,
-        dataOverride?: { orderId?: string; buyer?: BuyerAccount; amount?: number; inventoryId?: string; accountId?: string }
+        dataOverride?: { orderId?: string; buyer?: BuyerAccount; amount?: number; inventoryId?: string; accountId?: string; orderNo?: string }
     ) => {
         const actingOrderId = dataOverride?.orderId || orderId;
         const actingBuyer = dataOverride?.buyer || currentBuyer;
@@ -86,7 +86,7 @@ export const usePaymentProcess = () => {
 
             const newOrder: Order = {
                 id: actingOrderId,
-                orderNo: `T${actingOrderId}`,
+                orderNo: dataOverride?.orderNo || (oldOrder?.orderNo) || `T${actingOrderId}`, // Use override or fallback
                 customer: actingBuyer.remark || '测试买家',
                 amount: dataOverride?.amount || oldOrder?.amount || 0,
                 currency: 'CNY',
@@ -388,9 +388,18 @@ export const usePaymentProcess = () => {
             const mWebUrl = payRes.respData?.thirdPayInfodata?.[0]?.payData?.mWebUrl;
             if (!mWebUrl) throw new Error('未获取到微信跳转链接');
 
-            // Save Pending Order
+            // Generate Internal ID (ZZPAY + 12 digits)
+            const suffix = Date.now().toString().substring(1); // 12 digits
+            const internalOrderId = `ZZPAY${suffix}`;
+
+            // Save Pending Order with explicit Internal ID
             await saveOrderToBackend(OrderStatus.PENDING, {
-                orderId: newOrderId, buyer, amount, inventoryId: item.id, accountId: item.accountId
+                orderId: newOrderId,
+                buyer,
+                amount,
+                inventoryId: item.id,
+                accountId: item.accountId,
+                orderNo: internalOrderId // Pass specific ID
             });
 
             // 7. Deep Link Conversion
@@ -409,7 +418,6 @@ export const usePaymentProcess = () => {
             else throw new Error('无法解析最终支付链接');
 
             setStep(5);
-            const internalOrderId = `ZZPAY${newOrderId}`;
             return { internalOrderId, amount }; // Return data for UI
 
         } catch (e: any) {

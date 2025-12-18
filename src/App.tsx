@@ -336,7 +336,8 @@ const App: React.FC = () => {
           }
           alert(msg);
         } else {
-          alert(`查询失败: Code=${res.respCode}, Msg=${res.errorMsg || '未知错误'}`);
+          // Status matched, no update needed, but query was successful
+          alert(`查询成功: 订单状态正常。\n当前状态: ${statusInfo || '未知'} (Code: ${statusStr})`);
         }
       } // Close if respCode === '0'
     } catch (e: any) {
@@ -521,7 +522,7 @@ const App: React.FC = () => {
           </div>
           {/* Version Footer */}
           <div className="fixed bottom-4 right-4 text-xs text-slate-400 bg-white px-3 py-1 rounded-full shadow-sm border border-slate-200">
-            Admin v1.5.11
+            Admin v1.5.12
           </div>
         </main>
       </div>
