@@ -276,6 +276,10 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
                             </button>
                         </div>
                     )}
+
+                    <div className="absolute bottom-4 left-0 right-0 text-center text-xs text-slate-300 pointer-events-none">
+                        PayStream v1.2.0
+                    </div>
                 </div>
             </div>
         </div>
