@@ -254,186 +254,219 @@ export const usePaymentProcess = () => {
             // Loop for Item Selection & Price Change
             const excludeIds: string[] = [];
             let isPriceChanged = false;
-            let item: InventoryItem;
-            let freshAccounts: StoreAccount[];
+            let item: InventoryItem | undefined;
+            let freshAccounts: StoreAccount[] = [];
             let buyer: BuyerAccount | undefined;
 
             while (!isPriceChanged) {
-                // 1. Inventory Match (Handles Queueing internally)
-                // If we are retrying (excludeIds > 0), simple random retry might pick same if not excluded.
-                // findAndLockInventory now supports exclusion.
-
+                // 1. Inventory Match
                 if (excludeIds.length > 0) {
                     addLog(`⚠️ 前次尝试失败，正在重新匹配 (跳过 ${excludeIds.length} 个)...`);
-                    // Release previous item lock if needed? 
-                    // Locally it's fine, server side it was locked. We should ideally unlock the bad one.
-                    // But unlocking might be async/slow. Let's just lock a NEW one.
-                    // The bad one will expire.
                 }
 
                 const result = await findAndLockInventory(excludeIds);
                 item = result.item;
                 freshAccounts = result.freshAccounts;
                 setLockedItem(item);
-                if (ignoredItemIds.length > 0) {
-                    // Release previous valid verification lock if we are switching
-                    // Actually findAndLockInventory handles locking new one
-                    // But we need to pass ignored list. 
-                    // Refactoring findAndLockInventory to accept ignoredIds is complex in this scope
-                    // Instead, we will manually filter in this loop? 
-                    // No, we need findAndLockInventory to pick a DIFFERENT one.
 
-                    // Hack: Since findAndLockInventory doesn't take args, we can't easily force it to skip.
-                    // But we can just "Unlock" the bad one locally (internal reset?) or just try again hoping for random?
-                    // "random" selection in findAndLockInventory helps.
-                    // Better: We should modify findAndLockInventory to accept excludeIds?
-                    // Let's modify findAndLockInventory signature first.
-                    throw new Error('RETRY_NEED_EXCLUDE');
+                if (excludeIds.length === 0) {
+                    addLog(`匹配商品: ${item.parentTitle.substring(0, 15)}...`);
+                } else {
+                    addLog(`重新匹配: ${item.parentTitle.substring(0, 15)}...`);
+                }
+                setStep(1);
+
+                // 2. Select Buyer
+                // Always refresh buyers list to get latest status/addressId
+                const bRes = await fetch(getApiUrl('buyers'));
+                const freshBuyers: BuyerAccount[] = await bRes.json();
+                setBuyers(freshBuyers);
+
+                if (buyerId) {
+                    buyer = freshBuyers.find(b => b.id === buyerId);
+                } else if (settings?.pullMode === 'specific' && settings?.specificBuyerId) {
+                    buyer = freshBuyers.find(b => b.id === settings.specificBuyerId);
+                } else {
+                    buyer = freshBuyers[Math.floor(Math.random() * freshBuyers.length)];
                 }
 
-                // ... Wait, inserting a loop here is risky without refactoring findAndLockInventory.
-                // Alternative: Just fail this run, but LOG it so user sees "Retrying".
-                // But user wants Queue if ALL fail.
+                if (!buyer) throw new Error('未找到可用买家账号');
+                setCurrentBuyer(buyer);
 
-                // Let's refactor findAndLockInventory to accept excludeIds.
-                // But I cannot see findAndLockInventory definition in this View (it's above).
-                // I will assume standard signature change is needed.
-                break;
-            } catch (e) { throw e; }
-        }
-            // Stopping edit to refactor findAndLockInventory first.
+                // 3. Get Seller & Change Price
+                const seller = freshAccounts.find(a => a.id === item!.accountId);
+                if (!seller) throw new Error('卖家账号异常');
+
+                setStep(2);
+                const targetCents = Math.round(amount * 100);
+                if (excludeIds.length === 0) addLog(`正在改价为 ¥${amount}...`);
+
+                const changePriceWithId = async (oid: string, isParent: boolean = false) => {
+                    const url = `https://app.zhuanzhuan.com/zzopen/c2b_consignment/changePrice?argueSwitch=true&buyPrice=0&orderId=${oid}&infoPrice=${targetCents}&infoShowPrice=${targetCents}&selectedFastWithdrawService=0`;
+                    const res = await proxyRequest(url, seller.cookie);
+                    return res;
+                };
+
+                // Attempt 1: Child Order ID
+                let cpRes = await changePriceWithId(item!.childOrderId);
+
+                // Retry Mechanism: If "Operation not supported", try Parent Order ID
+                if ((cpRes.respCode !== '0' && cpRes.respData?.optResult !== true)) {
+                    const errMsg = cpRes.errorMsg || '';
+                    if (item!.orderId && item!.orderId !== item!.childOrderId) {
+                        cpRes = await changePriceWithId(item!.orderId, true);
+                    }
+                }
+
+                if (cpRes.respCode !== '0' && cpRes.respData?.optResult !== true) {
+                    console.error('Price Change Failure:', cpRes);
+                    const msg = cpRes.errorMsg || '未知错误';
+                    addLog(`❌ 改价失败: ${msg}. 尝试下一个商品...`);
+
+                    // Mark as bad and Loop
+                    excludeIds.push(item!.id);
+                    releaseInventory(item!.id);
+                    continue; // RETRY LOOP
+                }
+
+                // Success!
+                isPriceChanged = true;
+                addLog('改价成功');
+            }
+
+            if (!item || !buyer) throw new Error('流程异常: 未选中商品或买家');
 
             // 4. Get Address
             setStep(3);
-        let addressId = buyer.addressId;
-        if (addressId) {
-            addLog(`使用预设收货地址 (ID: ${addressId})`);
-        } else {
-            const addrRes = await proxyRequest(`https://app.zhuanzhuan.com/zz/transfer/getAllAddress?_t=${Date.now()}`, buyer.cookie);
-            addressId = addrRes.respData?.[0]?.id;
-            if (!addressId) throw new Error('买家账号无收货地址');
+            let addressId = buyer.addressId;
+            if (addressId) {
+                addLog(`使用预设收货地址 (ID: ${addressId})`);
+            } else {
+                const addrRes = await proxyRequest(`https://app.zhuanzhuan.com/zz/transfer/getAllAddress?_t=${Date.now()}`, buyer.cookie);
+                addressId = addrRes.respData?.[0]?.id;
+                if (!addressId) throw new Error('买家账号无收货地址');
+            }
+
+            // 5. Create Order
+            addLog('正在下单...');
+            const createOrderData = {
+                apiVersion: "V3_INSURANCE_SERVICE", payActionType: "1", mutiProduct: "1", payType: "0", supportCent: "1",
+                addressId: addressId,
+                productStr: JSON.stringify([{
+                    channelId: "", metric: "", payType: "0", serviceList: ["40"], infoNum: "1", infoId: item.infoId
+                }]),
+                buyerRemark: "", packIds: "[]", saleIds: "[]",
+                deliveryInfos: JSON.stringify([{ infoId: item.infoId, deliveryInfo: { deliveryMethodId: "1", versionId: "0" } }]),
+                tradeType: "0", captureState: "-1", infoId: item.infoId, infoNum: "", init_from: "G1001_yxyl_diamond_5820_4", whetherShowPosteriorQcStyle: "0"
+            };
+            const params = new URLSearchParams();
+            Object.entries(createOrderData).forEach(([k, v]) => params.append(k, v));
+
+            const orderRes = await proxyRequest(
+                'https://app.zhuanzhuan.com/zz/transfer/createOrder', buyer.cookie, 'POST', params.toString(),
+                { 'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8' }
+            );
+
+            if (orderRes.respCode !== '0') throw new Error(`下单失败: ${orderRes.respData || orderRes.errorMsg}`);
+
+            const newOrderId = orderRes.respData.orderId;
+            const payId = orderRes.respData.payId;
+
+            // Generate Short ID
+            const shortId = Date.now().toString().slice(-6) + Math.floor(Math.random() * 90 + 10).toString(); // e.g., 23456789
+
+            setOrderId(newOrderId);
+            setOrderCreatedAt(Date.now());
+            addLog(`下单成功! 订单号: ${newOrderId}`);
+
+            // 6. Get Payment Link
+            setStep(4);
+            const payListData = [{ "payMethod": "0", "tradeType": "NEW_TRADE", "money": `${targetCents}`, "extendParam": { "frontEndType": "3", "appName": "转转官网", "appBundleId": "https://m.zhuanzhuan.58.com", "payConfigId": "showChannel:SHOW_WX;nameRuleId:1821105009618587136", "instalmentNum": "0", "cmbToken": "", "payConfigKey": "showChannel:SHOW_WX;nameRuleId:1821105009618587136" }, "tradeTypeKey": "NEW_TRADE" }];
+            const payParams = new URLSearchParams();
+            payParams.append('reqSource', '1'); payParams.append('mchId', '1001'); payParams.append('payId', payId); payParams.append('payMode', 'base'); payParams.append('captureState', '-1');
+            payParams.append('payList', JSON.stringify(payListData));
+
+            const payRes = await proxyRequest(
+                'https://app.zhuanzhuan.com/zz/transfer/saveCashierDeskInfo', buyer.cookie, 'POST', payParams.toString(),
+                { 'Content-Type': 'application/x-www-form-urlencoded' }
+            );
+
+            const mWebUrl = payRes.respData?.thirdPayInfodata?.[0]?.payData?.mWebUrl;
+            if (!mWebUrl) throw new Error('未获取到微信跳转链接');
+
+            // Save Pending Order
+            await saveOrderToBackend(OrderStatus.PENDING, {
+                orderId: newOrderId, buyer, amount, inventoryId: item.id, accountId: item.accountId
+            });
+
+            // 7. Deep Link Conversion
+            const deepRes = await fetch(PROXY_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ targetUrl: mWebUrl, method: 'GET', headers: { 'Referer': 'https://m.zhuanzhuan.com/' } })
+            });
+            const htmlText = await deepRes.text();
+
+            const match = htmlText.match(/weixin:\/\/wap\/pay[^"]+/);
+            const match2 = htmlText.match(/deeplink\s*:\s*"(weixin:[^"]+)"/);
+
+            if (match) setPaymentLink(match[0]);
+            else if (match2) setPaymentLink(match2[1]);
+            else throw new Error('无法解析最终支付链接');
+
+            setStep(5);
+            return { shortId, amount }; // Return data for UI
+
+        } catch (e: any) {
+            setError(e.message);
+            addLog(`错误: ${e.message}`);
+            // Revert Lock on Error
+            if (lockedItem) await releaseInventory(lockedItem.id);
+            if (e.message.includes('繁忙')) setStep(0);
+            else setStep(0); // Always reset UI
+        } finally {
+            setLoading(false);
+            setQueueEndTime(null);
         }
+    };
 
-        // 5. Create Order
-        addLog('正在下单...');
-        const createOrderData = {
-            apiVersion: "V3_INSURANCE_SERVICE", payActionType: "1", mutiProduct: "1", payType: "0", supportCent: "1",
-            addressId: addressId,
-            productStr: JSON.stringify([{
-                channelId: "", metric: "", payType: "0", serviceList: ["40"], infoNum: "1", infoId: item.infoId
-            }]),
-            buyerRemark: "", packIds: "[]", saleIds: "[]",
-            deliveryInfos: JSON.stringify([{ infoId: item.infoId, deliveryInfo: { deliveryMethodId: "1", versionId: "0" } }]),
-            tradeType: "0", captureState: "-1", infoId: item.infoId, infoNum: "", init_from: "G1001_yxyl_diamond_5820_4", whetherShowPosteriorQcStyle: "0"
-        };
-        const params = new URLSearchParams();
-        Object.entries(createOrderData).forEach(([k, v]) => params.append(k, v));
+    // Polling Logic for Status
+    useEffect(() => {
+        let interval: any;
+        if (step === 5 && orderId && currentBuyer) {
+            interval = setInterval(async () => {
+                try {
+                    const url = `https://app.zhuanzhuan.com/zz/transfer/getOrder?mversion=3&orderId=${orderId}&abGroup=2`;
+                    const res = await proxyRequest(url, currentBuyer.cookie);
+                    const statusStr = res.respData?.status;
+                    const statusInfo = res.respData?.statusInfo;
 
-        const orderRes = await proxyRequest(
-            'https://app.zhuanzhuan.com/zz/transfer/createOrder', buyer.cookie, 'POST', params.toString(),
-            { 'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8' }
-        );
+                    if (statusStr === '3' || statusInfo?.includes('待发货') || statusInfo?.includes('已支付')) {
+                        setStep(6);
+                        clearInterval(interval);
+                        await releaseInventory(lockedItem?.id);
+                        saveOrderToBackend(OrderStatus.SUCCESS);
+                    } else if (statusStr === '19' || statusInfo?.includes('已取消')) {
+                        clearInterval(interval);
+                        saveOrderToBackend(OrderStatus.CANCELLED);
+                    }
+                } catch (e) { console.error(e); }
+            }, 3000);
+        }
+        return () => clearInterval(interval);
+    }, [step, orderId, currentBuyer]);
 
-        if (orderRes.respCode !== '0') throw new Error(`下单失败: ${orderRes.respData || orderRes.errorMsg}`);
-
-        const newOrderId = orderRes.respData.orderId;
-        const payId = orderRes.respData.payId;
-
-        // Generate Short ID
-        const shortId = Date.now().toString().slice(-6) + Math.floor(Math.random() * 90 + 10).toString(); // e.g., 23456789
-
-        setOrderId(newOrderId);
-        setOrderCreatedAt(Date.now());
-        addLog(`下单成功! 订单号: ${newOrderId}`);
-
-        // 6. Get Payment Link
-        setStep(4);
-        const payListData = [{ "payMethod": "0", "tradeType": "NEW_TRADE", "money": `${targetCents}`, "extendParam": { "frontEndType": "3", "appName": "转转官网", "appBundleId": "https://m.zhuanzhuan.58.com", "payConfigId": "showChannel:SHOW_WX;nameRuleId:1821105009618587136", "instalmentNum": "0", "cmbToken": "", "payConfigKey": "showChannel:SHOW_WX;nameRuleId:1821105009618587136" }, "tradeTypeKey": "NEW_TRADE" }];
-        const payParams = new URLSearchParams();
-        payParams.append('reqSource', '1'); payParams.append('mchId', '1001'); payParams.append('payId', payId); payParams.append('payMode', 'base'); payParams.append('captureState', '-1');
-        payParams.append('payList', JSON.stringify(payListData));
-
-        const payRes = await proxyRequest(
-            'https://app.zhuanzhuan.com/zz/transfer/saveCashierDeskInfo', buyer.cookie, 'POST', payParams.toString(),
-            { 'Content-Type': 'application/x-www-form-urlencoded' }
-        );
-
-        const mWebUrl = payRes.respData?.thirdPayInfodata?.[0]?.payData?.mWebUrl;
-        if (!mWebUrl) throw new Error('未获取到微信跳转链接');
-
-        // Save Pending Order
-        await saveOrderToBackend(OrderStatus.PENDING, {
-            orderId: newOrderId, buyer, amount, inventoryId: item.id, accountId: item.accountId
-        });
-
-        // 7. Deep Link Conversion
-        const deepRes = await fetch(PROXY_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ targetUrl: mWebUrl, method: 'GET', headers: { 'Referer': 'https://m.zhuanzhuan.com/' } })
-        });
-        const htmlText = await deepRes.text();
-
-        const match = htmlText.match(/weixin:\/\/wap\/pay[^"]+/);
-        const match2 = htmlText.match(/deeplink\s*:\s*"(weixin:[^"]+)"/);
-
-        if (match) setPaymentLink(match[0]);
-        else if (match2) setPaymentLink(match2[1]);
-        else throw new Error('无法解析最终支付链接');
-
-        setStep(5);
-        return { shortId, amount }; // Return data for UI
-
-    } catch (e: any) {
-        setError(e.message);
-        addLog(`错误: ${e.message}`);
-        // Revert Lock on Error
-        if (lockedItem) await releaseInventory(lockedItem.id);
-        if (e.message.includes('繁忙')) setStep(0);
-        else setStep(0); // Always reset UI
-    } finally {
-        setLoading(false);
-        setQueueEndTime(null);
-    }
-};
-
-// Polling Logic for Status
-useEffect(() => {
-    let interval: any;
-    if (step === 5 && orderId && currentBuyer) {
-        interval = setInterval(async () => {
-            try {
-                const url = `https://app.zhuanzhuan.com/zz/transfer/getOrder?mversion=3&orderId=${orderId}&abGroup=2`;
-                const res = await proxyRequest(url, currentBuyer.cookie);
-                const statusStr = res.respData?.status;
-                const statusInfo = res.respData?.statusInfo;
-
-                if (statusStr === '3' || statusInfo?.includes('待发货') || statusInfo?.includes('已支付')) {
-                    setStep(6);
-                    clearInterval(interval);
-                    await releaseInventory(lockedItem?.id);
-                    saveOrderToBackend(OrderStatus.SUCCESS);
-                } else if (statusStr === '19' || statusInfo?.includes('已取消')) {
-                    clearInterval(interval);
-                    saveOrderToBackend(OrderStatus.CANCELLED);
-                }
-            } catch (e) { console.error(e); }
-        }, 3000);
-    }
-    return () => clearInterval(interval);
-}, [step, orderId, currentBuyer]);
-
-return {
-    startPayment,
-    cancelCurrentOrder,
-    loading,
-    logs,
-    step,
-    error,
-    paymentLink,
-    orderId,
-    orderCreatedAt,
-    queueEndTime,
-    settings, // Export settings
-};
+    return {
+        startPayment,
+        cancelCurrentOrder,
+        loading,
+        logs,
+        step,
+        error,
+        paymentLink,
+        orderId,
+        orderCreatedAt,
+        queueEndTime,
+        settings, // Export settings
+    };
 };
