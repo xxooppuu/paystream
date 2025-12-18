@@ -15,7 +15,7 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
     const [validityDuration, setValidityDuration] = useState(180); // Default 3 mins
     const [timeLeft, setTimeLeft] = useState<number | null>(null);
     const [queueTimeLeft, setQueueTimeLeft] = useState<number | null>(null);
-    const [orderInfo, setOrderInfo] = useState<{ shortId: string, amount: number } | null>(null);
+    const [orderInfo, setOrderInfo] = useState<{ internalOrderId: string; amount: number } | null>(null);
 
     // Logic from the hook
     const { startPayment, cancelCurrentOrder, loading, logs, step, error, paymentLink, orderCreatedAt, queueEndTime, settings } = usePaymentProcess();
@@ -278,7 +278,7 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
                     )}
 
                     <div className="absolute bottom-4 left-0 right-0 text-center text-xs text-slate-300 pointer-events-none">
-                        PayStream v1.5.10
+                        PayStream v1.5.11
                     </div>
                 </div>
             </div>

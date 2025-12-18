@@ -409,7 +409,7 @@ export const usePaymentProcess = () => {
             else throw new Error('无法解析最终支付链接');
 
             setStep(5);
-            const internalOrderId = `T${newOrderId}`;
+            const internalOrderId = `ZZPAY${newOrderId}`;
             return { internalOrderId, amount }; // Return data for UI
 
         } catch (e: any) {
