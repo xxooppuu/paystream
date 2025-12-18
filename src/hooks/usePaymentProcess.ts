@@ -24,6 +24,7 @@ export const usePaymentProcess = () => {
     // Internal Data
     const [buyers, setBuyers] = useState<BuyerAccount[]>([]);
     const [accounts, setAccounts] = useState<StoreAccount[]>([]);
+    const [settings, setSettings] = useState<any>({});
 
     // Helpers
     const addLog = (msg: string) => setLogs(prev => [`[${new Date().toLocaleTimeString()}] ${msg}`, ...prev]);
@@ -36,6 +37,10 @@ export const usePaymentProcess = () => {
             .then(data => Array.isArray(data) && setBuyers(data));
 
         // Initial shop load just for cache/display, real logic fetches fresh
+        fetch(getApiUrl('settings'))
+            .then(res => res.json())
+            .then(data => setSettings(data))
+            .catch(console.error);
     }, []);
 
     const saveShops = async (newAccounts: StoreAccount[]) => {
@@ -140,7 +145,13 @@ export const usePaymentProcess = () => {
             const idleItems = freshInventory.filter(i =>
                 i.status.includes('出售') &&
                 (i.internalStatus === 'idle' || !i.internalStatus)
-            );
+            ).filter(i => {
+                // Filter by Product Mode
+                if (settings?.productMode === 'shop' && settings?.specificShopId) {
+                    return i.accountId === settings.specificShopId;
+                }
+                return true;
+            });
 
             if (idleItems.length > 0) {
                 // Found!
@@ -200,6 +211,8 @@ export const usePaymentProcess = () => {
             let buyer: BuyerAccount | undefined;
             if (buyerId) {
                 buyer = buyers.find(b => b.id === buyerId);
+            } else if (settings?.pullMode === 'specific' && settings?.specificBuyerId) {
+                buyer = buyers.find(b => b.id === settings.specificBuyerId);
             } else {
                 buyer = buyers[Math.floor(Math.random() * buyers.length)];
             }
@@ -223,7 +236,7 @@ export const usePaymentProcess = () => {
 
             // 4. Get Address
             setStep(3);
-            const addrRes = await proxyRequest('https://app.zhuanzhuan.com/zz/transfer/getAllAddress', buyer.cookie);
+            const addrRes = await proxyRequest(`https://app.zhuanzhuan.com/zz/transfer/getAllAddress?_t=${Date.now()}`, buyer.cookie);
             const addressId = addrRes.respData?.[0]?.id;
             if (!addressId) throw new Error('买家账号无收货地址');
 

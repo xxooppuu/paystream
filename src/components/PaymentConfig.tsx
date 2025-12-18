@@ -14,6 +14,9 @@ export const PaymentConfig: React.FC = () => {
     const [pullMode, setPullMode] = useState<'specific' | 'random'>('random');
     const [productMode, setProductMode] = useState<'shop' | 'random'>('random');
     const [validityDuration, setValidityDuration] = useState<number>(180);
+    const [specificBuyerId, setSpecificBuyerId] = useState<string>('');
+    const [specificShopId, setSpecificShopId] = useState<string>('');
+    const [shops, setShops] = useState<any[]>([]); // Need shops for dropdown
     const [saving, setSaving] = useState(false);
 
     useEffect(() => {
@@ -24,9 +27,15 @@ export const PaymentConfig: React.FC = () => {
                 if (data.validityDuration) setValidityDuration(Number(data.validityDuration));
                 if (data.pullMode) setPullMode(data.pullMode);
                 if (data.productMode) setProductMode(data.productMode);
+                if (data.specificBuyerId) setSpecificBuyerId(data.specificBuyerId);
+                if (data.specificShopId) setSpecificShopId(data.specificShopId);
             })
             .catch(console.error);
 
+        fetch(getApiUrl('shops'))
+            .then(res => res.json())
+            .then(data => Array.isArray(data) && setShops(data))
+            .catch(console.error);
 
         fetch(getApiUrl('buyers'))
             .then(res => res.json())
@@ -83,7 +92,9 @@ export const PaymentConfig: React.FC = () => {
                 body: JSON.stringify({
                     validityDuration,
                     pullMode,
-                    productMode
+                    productMode,
+                    specificBuyerId,
+                    specificShopId
                 })
             });
             alert('策略配置已保存');
@@ -130,8 +141,22 @@ export const PaymentConfig: React.FC = () => {
                                 </button>
                             </div>
                             <p className="text-xs text-slate-400 mt-2">
-                                {pullMode === 'random' ? '每次拉单时从下方账号列表中随机选择一个。' : '需在支付页面手动选择一个账号进行拉单。'}
+                                {pullMode === 'random' ? '每次拉单时从下方账号列表中随机选择一个。' : '需在此指定一个默认使用的拉单账号。'}
                             </p>
+                            {pullMode === 'specific' && (
+                                <div className="mt-2">
+                                    <select
+                                        className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"
+                                        value={specificBuyerId}
+                                        onChange={e => setSpecificBuyerId(e.target.value)}
+                                    >
+                                        <option value="">-- 请选择拉单账号 --</option>
+                                        {buyers.map(b => (
+                                            <option key={b.id} value={b.id}>{b.remark}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
                         </div>
 
                         <div>
@@ -153,11 +178,22 @@ export const PaymentConfig: React.FC = () => {
                                 </button>
                             </div>
                             <p className="text-xs text-slate-400 mt-2">
-                                {productMode === 'random' ? '从所有店铺的空闲商品中随机选择。' : '先选择店铺，再从该店铺中随机选择空闲商品。'}
+                                {productMode === 'random' ? '从所有店铺的空闲商品中随机选择。' : '仅使用下方指定店铺的库存。'}
                             </p>
-                            <p className="text-xs text-slate-400 mt-2">
-                                {productMode === 'random' ? '从所有店铺的空闲商品中随机选择。' : '先选择店铺，再从该店铺中随机选择空闲商品。'}
-                            </p>
+                            {productMode === 'shop' && (
+                                <div className="mt-2">
+                                    <select
+                                        className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"
+                                        value={specificShopId}
+                                        onChange={e => setSpecificShopId(e.target.value)}
+                                    >
+                                        <option value="">-- 请选择店铺 --</option>
+                                        {shops.map(s => (
+                                            <option key={s.id} value={s.id}>{s.name || `店铺 ${s.id.substr(0, 8)}`}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
                         </div>
 
                         <div>

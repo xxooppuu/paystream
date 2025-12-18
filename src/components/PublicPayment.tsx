@@ -243,8 +243,9 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
                             <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4 text-red-500">
                                 <XCircle className="w-8 h-8" />
                             </div>
-                            <h3 className="text-lg font-bold text-slate-800 mb-2">订单已取消</h3>
-                            <p className="text-slate-500 text-sm mb-6">{error}</p>
+                            <h3 className="text-lg font-bold text-slate-800 mb-2">订单提交失败</h3>
+                            <p className="text-slate-500 text-sm mb-6">当前系统繁忙，请稍后重试</p>
+                            {/* Detailed error hidden from UI but logged: {error} */}
 
                             <button onClick={() => window.location.reload()} className="text-indigo-600 font-bold hover:underline">
                                 返回重新下单
