@@ -44,6 +44,8 @@ export const usePaymentProcess = () => {
     }, []);
 
     const saveShops = async (newAccounts: StoreAccount[]) => {
+        // Optimistic UI update
+        setAccounts(newAccounts);
         await fetch(getApiUrl('shops'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -118,7 +120,7 @@ export const usePaymentProcess = () => {
 
         if (success) {
             addLog('订单已取消');
-            setStep(0);
+            setStep(7); // 7: Expired/Cancelled Step
             setError('订单已超时取消');
             await saveOrderToBackend(OrderStatus.CANCELLED);
             await releaseInventory(lockedItem?.id);
@@ -134,21 +136,30 @@ export const usePaymentProcess = () => {
         setQueueEndTime(endTime);
 
         let isQueueing = false;
+        let attempts = 0;
 
         while (Date.now() < endTime) {
+            attempts++;
             // Fetch Fresh
             const sRes = await fetch(getApiUrl('shops'));
             const freshAccounts: StoreAccount[] = await sRes.json();
             const freshInventory = freshAccounts.flatMap(a => a.inventory || []);
             setAccounts(freshAccounts);
 
-            const idleItems = freshInventory.filter(i =>
-                i.status.includes('出售') &&
-                (i.internalStatus === 'idle' || !i.internalStatus)
-            ).filter(i => {
+            // Fetch Settings Freshly too, in case changed
+            const setRes = await fetch(getApiUrl('settings'));
+            const freshSettings = await setRes.json();
+            setSettings(freshSettings);
+
+            const idleItems = freshInventory.filter(i => {
+                // Primary Filter: Must be '出售中' (ZZ status) and 'idle' (Internal status)
+                // If internalStatus is missing, assume idle.
+                const isInternalIdle = (i.internalStatus === 'idle' || !i.internalStatus || (i.internalStatus === 'occupied' && i.lastMatchedTime && Date.now() - i.lastMatchedTime > 300000)); // Auto release after 5 mins
+                return i.status.includes('出售') && isInternalIdle;
+            }).filter(i => {
                 // Filter by Product Mode
-                if (settings?.productMode === 'shop' && settings?.specificShopId) {
-                    return i.accountId === settings.specificShopId;
+                if (freshSettings?.productMode === 'shop' && freshSettings?.specificShopId) {
+                    return i.accountId === freshSettings.specificShopId;
                 }
                 return true;
             });
@@ -165,7 +176,7 @@ export const usePaymentProcess = () => {
                 await saveShops(updatedAccounts);
 
                 if (isQueueing) addLog('排队结束，匹配成功！');
-                return { item, freshAccounts: updatedAccounts }; // Optimistic check passed
+                return { item, freshAccounts: updatedAccounts };
             }
 
             // Not found, enter queue mode if not already
@@ -175,7 +186,8 @@ export const usePaymentProcess = () => {
                 addLog('当前订单过多，进入排队模式...');
             }
 
-            await delay(POLLING_INTERVAL_MS);
+            // Wait before retry
+            await delay(attempts < 3 ? 1000 : POLLING_INTERVAL_MS); // Faster retry at first
         }
 
         setQueueEndTime(null);
@@ -186,7 +198,7 @@ export const usePaymentProcess = () => {
         setLoading(true);
         setLogs([]);
         setError(null);
-        setStep(1); // Default strictly to creating if instant, but might switch to 0.5
+        setStep(1); // Default strictly to creating
         setPaymentLink(null);
         setOrderId(null);
         setOrderCreatedAt(Date.now());
@@ -203,19 +215,24 @@ export const usePaymentProcess = () => {
                 addLog(`匹配商品: ${item.parentTitle.substring(0, 15)}...`);
                 setStep(1); // Back to creating
             } catch (e: any) {
-                // Determine if it was a queue timeout or other error
-                throw e; // Bubble up
+                throw e;
             }
 
             // 2. Select Buyer
             let buyer: BuyerAccount | undefined;
+            // Always refresh buyers list to get latest status/addressId
+            const bRes = await fetch(getApiUrl('buyers'));
+            const freshBuyers: BuyerAccount[] = await bRes.json();
+            setBuyers(freshBuyers);
+
             if (buyerId) {
-                buyer = buyers.find(b => b.id === buyerId);
+                buyer = freshBuyers.find(b => b.id === buyerId);
             } else if (settings?.pullMode === 'specific' && settings?.specificBuyerId) {
-                buyer = buyers.find(b => b.id === settings.specificBuyerId);
+                buyer = freshBuyers.find(b => b.id === settings.specificBuyerId);
             } else {
-                buyer = buyers[Math.floor(Math.random() * buyers.length)];
+                buyer = freshBuyers[Math.floor(Math.random() * freshBuyers.length)];
             }
+
             if (!buyer) throw new Error('未找到可用买家账号');
             setCurrentBuyer(buyer);
 
@@ -359,6 +376,7 @@ export const usePaymentProcess = () => {
         paymentLink,
         orderId,
         orderCreatedAt,
-        queueEndTime, // New
+        queueEndTime,
+        settings, // Export settings
     };
 };

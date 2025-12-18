@@ -17,7 +17,7 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
     const [queueTimeLeft, setQueueTimeLeft] = useState<number | null>(null);
 
     // Logic from the hook
-    const { startPayment, cancelCurrentOrder, loading, logs, step, error, paymentLink, orderCreatedAt, queueEndTime } = usePaymentProcess();
+    const { startPayment, cancelCurrentOrder, loading, logs, step, error, paymentLink, orderCreatedAt, queueEndTime, settings } = usePaymentProcess();
 
     useEffect(() => {
         // Fetch specific config
@@ -31,23 +31,16 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
             })
             .catch(console.error)
             .finally(() => setLoadingConfig(false));
-
-        // Fetch Validity Duration
-        fetch(getApiUrl('settings'))
-            .then(res => res.json())
-            .then(data => {
-                if (data.validityDuration) setValidityDuration(Number(data.validityDuration));
-            })
-            .catch(console.error);
     }, [pageId]);
 
     // Countdown Logic
     useEffect(() => {
-        if (step === 5 && orderCreatedAt) {
+        if (step === 5 && orderCreatedAt && settings?.validityDuration) {
+            const duration = Number(settings.validityDuration);
             const timer = setInterval(() => {
                 const now = Date.now();
                 const elapsedSeconds = Math.floor((now - orderCreatedAt) / 1000);
-                const remaining = validityDuration - elapsedSeconds;
+                const remaining = duration - elapsedSeconds;
 
                 if (remaining <= 0) {
                     setTimeLeft(0);
@@ -59,7 +52,7 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
             }, 1000);
             return () => clearInterval(timer);
         }
-    }, [step, orderCreatedAt, validityDuration]);
+    }, [step, orderCreatedAt, settings?.validityDuration]);
 
     useEffect(() => {
         if (queueEndTime) {
@@ -235,6 +228,22 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
                             </div>
                             <h2 className="text-2xl font-bold text-slate-800">支付成功</h2>
                             <p className="text-slate-500 mt-2">订单已完成，感谢您的支付。</p>
+                        </div>
+                    )}
+
+                    {step === 7 && (
+                        <div className="text-center py-12 space-y-6">
+                            <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-6 text-slate-400">
+                                <Clock className="w-10 h-10" />
+                            </div>
+                            <h2 className="text-2xl font-bold text-slate-800">订单已过期</h2>
+                            <p className="text-slate-500 mt-2">支付时间已超长，订单已自动取消。</p>
+                            <button
+                                onClick={() => window.location.reload()}
+                                className="mt-8 bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3 rounded-xl font-bold transition-colors"
+                            >
+                                刷新页面重新下单
+                            </button>
                         </div>
                     )}
 
