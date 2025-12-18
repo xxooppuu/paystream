@@ -6,8 +6,30 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="PayStream Secure Payment" />
-    <title>PayStream</title>
+    <title>PayStream Admin</title>
+    <script src="https://cdn.tailwindcss.com"></script>
     <style>
+        @keyframes progress-indeterminate {
+            0% {
+                width: 0%;
+                margin-left: 0%;
+            }
+
+            50% {
+                width: 50%;
+                margin-left: 25%;
+            }
+
+            100% {
+                width: 0%;
+                margin-left: 100%;
+            }
+        }
+
+        .animate-progress-indeterminate {
+            animation: progress-indeterminate 1.5s infinite ease-in-out;
+        }
+
         /* Global Loading States */
         body {
             margin: 0;
