@@ -139,7 +139,9 @@ export const usePaymentProcess = () => {
         while (Date.now() < endTime) {
             attempts++;
             // Fetch Fresh with Timestamp to avoid cache
-            const sRes = await fetch(getApiUrl(`shops?_t=${Date.now()}`));
+            // Fix: getApiUrl returns ?act=shops, so we must use & for params, NOT ? inside the string
+            const apiUrl = getApiUrl('shops') + `&_t=${Date.now()}`;
+            const sRes = await fetch(apiUrl);
             let freshAccounts: StoreAccount[] = await sRes.json();
             if (!Array.isArray(freshAccounts)) freshAccounts = [];
 
