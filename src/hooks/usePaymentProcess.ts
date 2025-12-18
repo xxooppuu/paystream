@@ -116,17 +116,15 @@ export const usePaymentProcess = () => {
         if (!orderId || !currentBuyer) return;
 
         addLog('正在取消订单...');
+        // Attempt cancellation, but don't let failure block the UI
         const success = await performOrderCancellation(orderId, currentBuyer.id);
 
-        if (success) {
-            addLog('订单已取消');
-            setStep(7); // 7: Expired/Cancelled Step
-            setError(null); // Clear error to avoid UI conflict
-            await saveOrderToBackend(OrderStatus.CANCELLED);
-            await releaseInventory(lockedItem?.id);
-        } else {
-            addLog('取消失败，请重试');
-        }
+        addLog(success ? '订单已取消' : '订单已过期');
+        setStep(7); // Always force Expired UI
+        setError(null); // Clear any errors
+
+        await saveOrderToBackend(OrderStatus.CANCELLED);
+        await releaseInventory(lockedItem?.id);
     };
 
     // Inventory Matching with Retry/Queue
@@ -151,11 +149,19 @@ export const usePaymentProcess = () => {
             const freshSettings = await setRes.json();
             setSettings(freshSettings);
 
+            // Determine Validity Duration (Default 180s if not set)
+            const validityMs = (freshSettings?.validityDuration ? Number(freshSettings.validityDuration) : 180) * 1000;
+
             const idleItems = freshInventory.filter(i => {
-                // Primary Filter: Must be '出售中' (ZZ status) and 'idle' (Internal status)
-                // If internalStatus is missing, assume idle.
-                const isInternalIdle = (i.internalStatus === 'idle' || !i.internalStatus || (i.internalStatus === 'occupied' && i.lastMatchedTime && Date.now() - i.lastMatchedTime > 300000)); // Auto release after 5 mins
-                return i.status.includes('出售') && isInternalIdle;
+                // Primary Filter: Must be '出售中' (ZZ status)
+                // Internal Status Check: 'idle' OR 'occupied' but expired
+                const isOccupied = i.internalStatus === 'occupied';
+                const isExpired = isOccupied && i.lastMatchedTime && (Date.now() - i.lastMatchedTime > validityMs);
+
+                // If it's idle, OR it's occupied but expired, we consider it available
+                const isInternalAvailable = (i.internalStatus === 'idle' || !i.internalStatus || isExpired);
+
+                return i.status.includes('出售') && isInternalAvailable;
             }).filter(i => {
                 // Filter by Product Mode
                 if (freshSettings?.productMode === 'shop' && freshSettings?.specificShopId) {
