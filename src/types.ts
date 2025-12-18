@@ -42,6 +42,7 @@ export interface InventoryItem {
 
 export interface Order {
   id: string; // Merchant Order ID
+  shortId?: string; // Short System ID for display
   orderNo: string; // System Order No
   customer: string;
   amount: number;

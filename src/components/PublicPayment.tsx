@@ -15,6 +15,7 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
     const [validityDuration, setValidityDuration] = useState(180); // Default 3 mins
     const [timeLeft, setTimeLeft] = useState<number | null>(null);
     const [queueTimeLeft, setQueueTimeLeft] = useState<number | null>(null);
+    const [orderInfo, setOrderInfo] = useState<{ shortId: string, amount: number } | null>(null);
 
     // Logic from the hook
     const { startPayment, cancelCurrentOrder, loading, logs, step, error, paymentLink, orderCreatedAt, queueEndTime, settings } = usePaymentProcess();
@@ -88,12 +89,17 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
 
     const adjustedAmount = getAdjustedAmount(amountInput);
 
-    const handlePay = () => {
+    const handlePay = async () => {
         if (!config || adjustedAmount <= 0) return;
         if (config.minAmount && adjustedAmount < config.minAmount) return alert(`最小金额限制: ${config.minAmount}`);
         if (config.maxAmount && adjustedAmount > config.maxAmount) return alert(`最大金额限制: ${config.maxAmount}`);
 
-        startPayment(adjustedAmount);
+        try {
+            const info = await startPayment(adjustedAmount);
+            if (info) setOrderInfo(info);
+        } catch (e) {
+            // Error handled in hook
+        }
     };
 
     if (loadingConfig) {
@@ -196,6 +202,15 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
 
                     {step === 5 && paymentLink && (
                         <div className="flex flex-col items-center animate-fade-in text-center">
+
+                            {/* Order Info */}
+                            {orderInfo && (
+                                <div className="mb-6 w-full bg-slate-50 rounded-xl p-4 border border-slate-100">
+                                    <div className="text-3xl font-bold text-slate-800 mb-1">¥ {orderInfo.amount}</div>
+                                    <div className="text-xs text-slate-400 font-mono">订单号: {orderInfo.shortId}</div>
+                                </div>
+                            )}
+
                             {/* Timer */}
                             <div className="mb-8 flex flex-col items-center">
                                 <div className="text-4xl font-mono font-bold text-slate-800 mb-2">
@@ -247,7 +262,7 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
                         </div>
                     )}
 
-                    {error && (
+                    {error && step !== 7 && (
                         <div className="text-center py-8">
                             <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4 text-red-500">
                                 <XCircle className="w-8 h-8" />

@@ -121,7 +121,7 @@ export const usePaymentProcess = () => {
         if (success) {
             addLog('订单已取消');
             setStep(7); // 7: Expired/Cancelled Step
-            setError('订单已超时取消');
+            setError(null); // Clear error to avoid UI conflict
             await saveOrderToBackend(OrderStatus.CANCELLED);
             await releaseInventory(lockedItem?.id);
         } else {
@@ -140,8 +140,8 @@ export const usePaymentProcess = () => {
 
         while (Date.now() < endTime) {
             attempts++;
-            // Fetch Fresh
-            const sRes = await fetch(getApiUrl('shops'));
+            // Fetch Fresh with Timestamp to avoid cache
+            const sRes = await fetch(getApiUrl(`shops?_t=${Date.now()}`));
             const freshAccounts: StoreAccount[] = await sRes.json();
             const freshInventory = freshAccounts.flatMap(a => a.inventory || []);
             setAccounts(freshAccounts);
@@ -286,6 +286,10 @@ export const usePaymentProcess = () => {
 
             const newOrderId = orderRes.respData.orderId;
             const payId = orderRes.respData.payId;
+
+            // Generate Short ID
+            const shortId = Date.now().toString().slice(-6) + Math.floor(Math.random() * 90 + 10).toString(); // e.g., 23456789
+
             setOrderId(newOrderId);
             setOrderCreatedAt(Date.now());
             addLog(`下单成功! 订单号: ${newOrderId}`);
@@ -326,14 +330,15 @@ export const usePaymentProcess = () => {
             else throw new Error('无法解析最终支付链接');
 
             setStep(5);
+            return { shortId, amount }; // Return data for UI
 
         } catch (e: any) {
             setError(e.message);
             addLog(`错误: ${e.message}`);
             // Revert Lock on Error
             if (lockedItem) await releaseInventory(lockedItem.id);
-            setStep(e.message.includes('繁忙') ? 0.5 : 0); // Keep in queue UI if timeout? No, timeout means stop.
-            if (e.message.includes('繁忙')) setStep(0); // Reset UI to allow retry
+            if (e.message.includes('繁忙')) setStep(0);
+            else setStep(0); // Always reset UI
         } finally {
             setLoading(false);
             setQueueEndTime(null);
