@@ -508,7 +508,7 @@ const App: React.FC = () => {
         </header>
 
         {/* Scrollable Area */}
-        <main className="flex-1 overflow-auto p-4 lg:p-8">
+        <main className="flex-1 overflow-auto p-4 lg:p-8 relative">
           <div className="max-w-7xl mx-auto">
             {currentView === 'dashboard' && <Dashboard orders={orders} />}
             {currentView === 'orders' && <OrderCenter orders={orders} onCancelOrder={handleCancelOrder} onCheckStatus={handleCheckOrderStatus} />}
@@ -518,6 +518,10 @@ const App: React.FC = () => {
             {currentView === 'channels' && <PaymentChannels />}
             {currentView === 'settings' && <Settings />}
             {currentView === 'payment-pages' && <PaymentPages />}
+          </div>
+          {/* Version Footer */}
+          <div className="fixed bottom-4 right-4 text-xs text-slate-400 bg-white px-3 py-1 rounded-full shadow-sm border border-slate-200">
+            Admin v1.4.0
           </div>
         </main>
       </div>
