@@ -132,25 +132,32 @@ function atomicLockItem($inventoryId, $matchedTime) {
         rewind($fp);
         $content = stream_get_contents($fp);
         
+        // v1.6.8: Force UTF-8 before decode to handle broken status chars
+        if (function_exists('mb_convert_encoding')) {
+            $content = mb_convert_encoding($content, 'UTF-8', 'UTF-8,GBK,ISO-8859-1');
+        }
+        
         $data = json_decode($content, true);
-        if ($data === null && json_last_error() !== JSON_ERROR_NONE) {
-            if (function_exists('mb_convert_encoding')) {
-                $content = mb_convert_encoding($content, 'UTF-8', 'UTF-8,GBK,ISO-8859-1');
-                $data = json_decode($content, true);
-            }
+        if ($data === null) {
+            flock($fp, LOCK_UN);
+            fclose($fp);
+            $errCode = json_last_error();
+            return "shops.json parse failed (Code: $errCode)";
         }
         
         if (!is_array($data)) {
             flock($fp, LOCK_UN);
             fclose($fp);
-            return "shops.json is not a valid array, JSON error: " . json_last_error_msg();
+            return "shops.json is not an array";
         }
         
         $found = false;
+        $targetId = (string)$inventoryId;
+        
         foreach ($data as &$account) {
             if (!isset($account['inventory']) || !is_array($account['inventory'])) continue;
             foreach ($account['inventory'] as &$item) {
-                if ((string)$item['id'] === (string)$inventoryId) {
+                if ((string)$item['id'] === $targetId) {
                     $item['internalStatus'] = 'occupied';
                     $item['lastMatchedTime'] = $matchedTime;
                     $found = true;
@@ -166,7 +173,7 @@ function atomicLockItem($inventoryId, $matchedTime) {
             if ($json === false) {
                 flock($fp, LOCK_UN);
                 fclose($fp);
-                return "JSON encoding failed: " . json_last_error_msg();
+                return "Write encoding failed";
             }
             fwrite($fp, $json);
             fflush($fp);
@@ -177,10 +184,10 @@ function atomicLockItem($inventoryId, $matchedTime) {
         
         flock($fp, LOCK_UN);
         fclose($fp);
-        return "Item $inventoryId not found in shops.json";
+        return "Item $targetId not found";
     }
     fclose($fp);
-    return "Could not acquire exclusive lock for shops.json";
+    return "Lock acquisition failed";
 }
 
 function getClientIp() {
