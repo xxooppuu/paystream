@@ -1,8 +1,8 @@
-PayStream v1.7.0 - PRODUCTION STABLE
-Status: ALL SYSTEMS GO
+PayStream v1.7.1 - QUEUE & MATCHING OPTIMIZED
+Status: ATOMIC RELEASE & RELAXED FILTERS
 Fixes: 
-- Missing jsonResponse restored
-- findAndLockInventory data flow corrected
-- Production Build: 2282 modules
-Build Timestamp: 2025-12-23 06:56
-Final Verification: Ready for Full Cycle Test
+- Added release_inventory atomic endpoint
+- Relaxed status filtering (matches '在售' and '出售')
+- Removed Read-Modify-Write in orderActions.ts
+Build Timestamp: 2025-12-23 07:12
+Verification: Ready for heavy concurrent testing

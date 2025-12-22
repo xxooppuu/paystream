@@ -170,11 +170,10 @@ export const usePaymentProcess = () => {
 
                 // 1. Relaxed Status Check? NO. Strict Check requested by User.
                 const status = i.status || '';
-                // EXCLUDE '已售出' (Sold Out) explicitly
-                if (status.includes('已售出') || status.includes('Sold')) return false;
-
-                // Only allow '出售中', 'active', 'sale', 'Normal'
-                const isStatusOk = status.includes('出售') || status === 'active' || status.includes('sale') || status.includes('Normal');
+                // Match anything that looks like "For Sale" or is a known positive status
+                // But EXCLUDE '已售出' (Sold Out) explicitly
+                const isStatusOk = (status.includes('售') || status === 'active' || status.includes('sale') || status.includes('Normal')) &&
+                    (!status.includes('已售出') && !status.includes('Sold'));
 
                 if (!isStatusOk) {
                     if (attempts === 1) console.log(`[Debug] 跳过商品 ${i.id}: 状态为 '${status}'`);

@@ -201,6 +201,65 @@ function atomicLockItem($inventoryId, $matchedTime) {
     return "Lock acquisition failed";
 }
 
+/**
+ * Atomically unlocks/releases an inventory item.
+ */
+function atomicUnlockItem($inventoryId) {
+    global $baseDir;
+    $filePath = $baseDir . '/shops.json';
+    
+    if (!file_exists($filePath)) return "shops.json not found";
+    
+    $fp = fopen($filePath, 'c+b');
+    if (!$fp) return "Could not open shops.json";
+    
+    if (flock($fp, LOCK_EX)) {
+        rewind($fp);
+        $content = stream_get_contents($fp);
+        
+        if (function_exists('mb_convert_encoding')) {
+            $content = mb_convert_encoding($content, 'UTF-8', 'UTF-8,GBK,ISO-8859-1');
+        }
+        
+        $data = json_decode($content, true);
+        if ($data === null) {
+            flock($fp, LOCK_UN);
+            fclose($fp);
+            return "JSON parse failed during unlock";
+        }
+        
+        $found = false;
+        $targetId = (string)$inventoryId;
+        foreach ($data as &$account) {
+            if (!isset($account['inventory']) || !is_array($account['inventory'])) continue;
+            foreach ($account['inventory'] as &$item) {
+                if ((string)$item['id'] === $targetId) {
+                    $item['internalStatus'] = 'idle';
+                    unset($item['lastMatchedTime']);
+                    $found = true;
+                    break 2;
+                }
+            }
+        }
+        
+        if ($found) {
+            ftruncate($fp, 0);
+            rewind($fp);
+            fwrite($fp, json_encode($data, JSON_UNESCAPED_UNICODE));
+            fflush($fp);
+            flock($fp, LOCK_UN);
+            fclose($fp);
+            return true;
+        }
+        
+        flock($fp, LOCK_UN);
+        fclose($fp);
+        return "Item $targetId not found to unlock";
+    }
+    fclose($fp);
+    return "Unlock acquisition failed";
+}
+
 function getClientIp() {
     $keys = [
         'HTTP_CF_CONNECTING_IP', // Cloudflare
@@ -261,6 +320,17 @@ try {
             $input = json_decode(file_get_contents('php://input'), true);
             if (!$input || !isset($input['id'])) jsonResponse(['error' => 'Invalid data'], 400);
             $res = atomicLockItem($input['id'], isset($input['time']) ? $input['time'] : time()*1000);
+            if ($res === true) {
+                jsonResponse(['success' => true]);
+            } else {
+                jsonResponse(['error' => $res], 500);
+            }
+            break;
+        case 'release_inventory':
+            if ($_SERVER['REQUEST_METHOD'] !== 'POST') jsonResponse(['error' => 'POST required'], 405);
+            $input = json_decode(file_get_contents('php://input'), true);
+            if (!$input || !isset($input['id'])) jsonResponse(['error' => 'Invalid data'], 400);
+            $res = atomicUnlockItem($input['id']);
             if ($res === true) {
                 jsonResponse(['success' => true]);
             } else {

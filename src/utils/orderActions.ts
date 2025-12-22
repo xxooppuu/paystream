@@ -1,5 +1,4 @@
 import { getApiUrl, PROXY_URL } from '../config';
-import { Order, OrderStatus } from '../types';
 
 export const performOrderCancellation = async (orderId: string, buyerId: string): Promise<boolean> => {
     if (!orderId || !buyerId) return false;
@@ -43,33 +42,13 @@ export const releaseInventory = async (inventoryId: string | undefined) => {
     if (!inventoryId) return;
 
     try {
-        const sRes = await fetch(getApiUrl('shops'));
-        if (sRes.ok) {
-            const shops: any[] = await sRes.json();
-            let shopsChanged = false;
-
-            const newShops = shops.map(shop => {
-                if (shop.inventory) {
-                    const newInv = shop.inventory.map((item: any) => {
-                        if (item.id === inventoryId && item.internalStatus === 'occupied') {
-                            shopsChanged = true;
-                            return { ...item, internalStatus: 'idle', status: '在售(自动释放)' };
-                        }
-                        return item;
-                    });
-                    return { ...shop, inventory: newInv };
-                }
-                return shop;
-            });
-
-            if (shopsChanged) {
-                await fetch(getApiUrl('shops'), {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(newShops)
-                });
-            }
-        }
+        // v1.7.1: Atomic Release via Backend
+        await fetch(getApiUrl('release_inventory'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: inventoryId })
+        });
+        console.log(`[Atomic] Inventory ${inventoryId} released.`);
     } catch (e) {
         console.error("Failed to release inventory", e);
     }
