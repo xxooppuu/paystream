@@ -227,8 +227,10 @@ export const usePaymentProcess = () => {
                 });
 
                 if (!lockRes.ok) {
-                    addLog('❌ 锁定商品失败，请重试');
-                    throw new Error('Lock failed');
+                    const errorData = await lockRes.json().catch(() => ({}));
+                    const errMsg = errorData.error || 'Lock failed';
+                    addLog(`❌ 锁定商品失败: ${errMsg}`);
+                    throw new Error(errMsg);
                 }
 
                 if (isQueueing) addLog('排队结束，匹配成功！');
