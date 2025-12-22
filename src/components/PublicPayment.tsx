@@ -20,6 +20,7 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
     const [ipLimitError, setIpLimitError] = useState<string | null>(null);
     const [queueTimeLeft, setQueueTimeLeft] = useState<number | null>(null);
     const [orderInfo, setOrderInfo] = useState<{ internalOrderId: string; amount: number } | null>(null);
+    const [ipUsage, setIpUsage] = useState<string | null>(null);
 
     useEffect(() => {
         const ua = navigator.userAgent.toLowerCase();
@@ -131,7 +132,12 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
                 return diff >= 0 && diff < windowMs; // Ignore future logs, only count past within window
             });
 
-            if (recentLogs.length >= config.ipLimitCount) {
+            // Update display info
+            const count = recentLogs.length;
+            const remaining = Math.max(0, config.ipLimitCount - count);
+            setIpUsage(`${config.ipLimitTime}小时内已拉单 ${count}/${config.ipLimitCount} 次，还剩 ${remaining} 次`);
+
+            if (count >= config.ipLimitCount) {
                 // Find when the oldest log expires
                 const oldest = Math.min(...recentLogs.map((l: any) => l.timestamp));
                 const nextAvail = oldest + windowMs;
@@ -146,6 +152,13 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
         }
         return true;
     };
+
+    // Auto-refresh IP usage on load
+    useEffect(() => {
+        if (config && visitorIp) {
+            checkIpLimit();
+        }
+    }, [config, visitorIp]);
 
     const saveIpLog = async () => {
         if (!visitorIp) return;
@@ -187,7 +200,8 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
             const info = await startPayment(adjustedAmount);
             if (info) {
                 setOrderInfo(info);
-                saveIpLog(); // Successfully generated order, log it
+                await saveIpLog(); // Successfully generated order, log it
+                await checkIpLimit(); // Refresh the count displayed in footer
             }
         } catch (e) {
             // Error handled in hook
@@ -452,7 +466,11 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
 
                     <div className="absolute bottom-4 left-0 right-0 text-center text-[10px] text-slate-300 pointer-events-none space-y-1">
                         <div>PayStream v1.6.2 (Build: {new Date().toLocaleTimeString()})</div>
-                        {visitorIp && <div className="opacity-50">Node: {visitorIp.split('.').pop()} / SYNC: {Math.abs(clockDrift) > 1000 ? 'ADJ' : 'OK'}</div>}
+                        {visitorIp && (
+                            <div className="opacity-50">
+                                IP: {visitorIp} {ipUsage ? ` / ${ipUsage}` : ''} / SYNC: {Math.abs(clockDrift) > 1000 ? 'ADJ' : 'OK'}
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>
