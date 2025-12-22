@@ -234,7 +234,7 @@ export const usePaymentProcess = () => {
                 }
 
                 if (isQueueing) addLog('排队结束，匹配成功！');
-                return { item, freshAccounts: [] }; // freshAccounts no longer used for manual save
+                return { item, freshAccounts };
             }
 
             // Not found, enter queue mode if not already
