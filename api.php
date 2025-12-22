@@ -126,7 +126,7 @@ function atomicLockItem($inventoryId, $matchedTime) {
         foreach ($accounts as &$account) {
             if (!isset($account['inventory']) || !is_array($account['inventory'])) continue;
             foreach ($account['inventory'] as &$item) {
-                if ($item['id'] == $inventoryId) {
+                if ((string)$item['id'] === (string)$inventoryId) {
                     $item['internalStatus'] = 'occupied';
                     $item['lastMatchedTime'] = (int)$matchedTime;
                     $found = true;
