@@ -271,7 +271,7 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
                         <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center mb-3 backdrop-blur-md border border-white/30 shadow-xl">
                             <ShieldCheck className="w-7 h-7 text-white" />
                         </div>
-                        <h1 className="text-2xl font-bold tracking-tight">{config?.title || config?.name || '安全支付收银台'}</h1>
+                        <h1 className="text-2xl font-bold tracking-tight">{config?.title || '安全支付收银台'}</h1>
                         <p className="text-indigo-100/70 text-sm mt-1 font-medium">PayStream Secure Checkout</p>
                     </div>
                 </div>
@@ -317,29 +317,27 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
                             </div>
                         </div>
                     ) : step === 0 && (
-                        <>
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-2">请输入支付金额</label>
-                                <div className="relative">
-                                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-xl font-bold">¥</span>
-                                    <input
-                                        type="number"
-                                        className="w-full pl-10 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-xl text-2xl font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 transition-all placeholder:text-slate-300"
-                                        placeholder="0.00"
-                                        value={amountInput}
-                                        onChange={e => setAmountInput(e.target.value)}
-                                    />
-                                </div>
-
-                                {amountInput && parseFloat(amountInput) > 0 && adjustedAmount !== parseFloat(amountInput) && (
-                                    <div className="mt-3 flex items-start gap-2 text-amber-600 bg-amber-50 p-3 rounded-lg text-sm">
-                                        <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
-                                        <span>
-                                            根据通道规则，实际支付金额将调整为 <span className="font-bold">¥{adjustedAmount}</span>
-                                        </span>
-                                    </div>
-                                )}
+                        <div className="space-y-6 animate-fade-in">
+                            <label className="block text-sm font-medium text-slate-700 mb-2">请输入支付金额</label>
+                            <div className="relative">
+                                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-xl font-bold">¥</span>
+                                <input
+                                    type="number"
+                                    className="w-full pl-10 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-xl text-2xl font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 transition-all placeholder:text-slate-300"
+                                    placeholder="0.00"
+                                    value={amountInput}
+                                    onChange={e => setAmountInput(e.target.value)}
+                                />
                             </div>
+
+                            {amountInput && parseFloat(amountInput) > 0 && adjustedAmount !== parseFloat(amountInput) && (
+                                <div className="mt-3 flex items-start gap-2 text-amber-600 bg-amber-50 p-3 rounded-lg text-sm">
+                                    <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                                    <span>
+                                        根据通道规则，实际支付金额将调整为 <span className="font-bold">¥{adjustedAmount}</span>
+                                    </span>
+                                </div>
+                            )}
 
                             <button
                                 onClick={handlePay}
@@ -351,7 +349,7 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
                             </button>
 
                             <InfoBox />
-                        </>
+                        </div>
                     )}
 
                     {step === 0.5 && (
@@ -462,7 +460,7 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
                     )}
 
                     <div className="absolute bottom-4 left-0 right-0 text-center text-[10px] text-slate-300 pointer-events-none space-y-1">
-                        <div>PayStream v1.6.5 (Build: {new Date().toLocaleTimeString()})</div>
+                        <div>PayStream v1.6.6 (Build: {new Date().toLocaleTimeString()})</div>
                         {visitorIp && (
                             <div className="opacity-50">
                                 IP: {visitorIp} {ipUsage ? ` / ${ipUsage}` : ''} / SYNC: {Math.abs(clockDrift) > 1000 ? 'ADJ' : 'OK'}
@@ -471,6 +469,6 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
                     </div>
                 </div>
             </div>
-        </div>
+        </div >
     );
 };
