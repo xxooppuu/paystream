@@ -1,5 +1,5 @@
-PayStream v1.6.7 - STABILITY VERIFICATION
-Status: FULL LOGGING & ATOMIC LOCKING
-Build Timestamp: 2025-12-23 06:30
-Verification: Explicit Backend Errors Exposed in Logs
-Note: If 'Lock failed' persists, check error message after the colon.
+PayStream v1.6.9 - STABLE PRODUCTION FIX
+Status: jsonResponse RESTORED
+Verification: Detailed Lock Diagnostics Enabled
+Build Timestamp: 2025-12-23 06:45
+Final Stability Check: PASSED

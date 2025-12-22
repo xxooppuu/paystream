@@ -33,6 +33,17 @@ $baseDir = __DIR__; // Store json files in the same directory
    --------------------------- */
 
 /**
+ * Sends a JSON response and exits.
+ */
+function jsonResponse($data, $code = 200) {
+    if (ob_get_length()) ob_clean(); // Ensure no stray output breaks JSON
+    http_response_code($code);
+    header('Content-Type: application/json');
+    echo json_encode($data);
+    exit;
+}
+
+/**
  * Handles JSON file storage with flock (file locking) to prevent concurrency issues.
  */
 function handleFileRequest($filename, $default = []) {
