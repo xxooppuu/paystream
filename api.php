@@ -67,15 +67,58 @@ function handleFileRequest($filename, $default = []) {
         exit;
     } else if ($method === 'POST') {
         $input = file_get_contents('php://input');
-        if (!json_decode($input)) {
+        $newData = json_decode($input, true);
+        if ($newData === null) {
             jsonResponse(['error' => 'Invalid JSON'], 400);
         }
         
-        $fp = fopen($filePath, 'cb');
+        $fp = fopen($filePath, 'c+b');
         if (!$fp) jsonResponse(['error' => 'Could not open file'], 500);
         
         if (flock($fp, LOCK_EX)) {
+            // v1.7.2: Smart Merge for shops.json
+            if ($filename === 'shops.json') {
+                rewind($fp);
+                $oldContent = stream_get_contents($fp);
+                if (function_exists('mb_convert_encoding')) {
+                    $oldContent = mb_convert_encoding($oldContent, 'UTF-8', 'UTF-8,GBK,ISO-8859-1');
+                }
+                $oldData = json_decode($oldContent, true);
+                
+                if (is_array($oldData) && is_array($newData)) {
+                    // Extract existing locks
+                    $lockMap = [];
+                    foreach ($oldData as $oldAccount) {
+                        if (!isset($oldAccount['inventory']) || !is_array($oldAccount['inventory'])) continue;
+                        foreach ($oldAccount['inventory'] as $oldItem) {
+                            if (isset($oldItem['internalStatus']) && $oldItem['internalStatus'] === 'occupied') {
+                                $lockMap[(string)$oldItem['id']] = [
+                                    'internalStatus' => $oldItem['internalStatus'],
+                                    'lastMatchedTime' => isset($oldItem['lastMatchedTime']) ? $oldItem['lastMatchedTime'] : null
+                                ];
+                            }
+                        }
+                    }
+                    
+                    // Re-apply locks to new data
+                    foreach ($newData as &$newAccount) {
+                        if (!isset($newAccount['inventory']) || !is_array($newAccount['inventory'])) continue;
+                        foreach ($newAccount['inventory'] as &$newItem) {
+                            $id = (string)$newItem['id'];
+                            if (isset($lockMap[$id])) {
+                                $newItem['internalStatus'] = $lockMap[$id]['internalStatus'];
+                                if ($lockMap[$id]['lastMatchedTime']) {
+                                    $newItem['lastMatchedTime'] = $lockMap[$id]['lastMatchedTime'];
+                                }
+                            }
+                        }
+                    }
+                }
+                $input = json_encode($newData, JSON_UNESCAPED_UNICODE);
+            }
+
             ftruncate($fp, 0);
+            rewind($fp);
             fwrite($fp, $input);
             fflush($fp);
             flock($fp, LOCK_UN);

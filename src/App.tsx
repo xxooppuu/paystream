@@ -597,7 +597,7 @@ const App: React.FC = () => {
           </div>
           {/* Version Footer */}
           <div className="fixed bottom-4 right-4 text-xs text-slate-400 bg-white px-3 py-1 rounded-full shadow-sm border border-slate-200">
-            Admin v1.7.1 (Queue Fix Stable)
+            Admin v1.7.2 (Persistence Stable)
           </div>
         </main>
       </div>
