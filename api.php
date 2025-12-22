@@ -85,15 +85,19 @@ function atomicAppend($filename, $newItem) {
     $filePath = $baseDir . '/' . $filename;
     
     $fp = fopen($filePath, 'c+b');
-    if (!$fp) return false;
+    if (!$fp) return "Could not open $filename for appending";
     
     if (flock($fp, LOCK_EX)) {
         rewind($fp);
         $content = stream_get_contents($fp);
+        
         $data = json_decode($content, true);
         if ($data === null && json_last_error() !== JSON_ERROR_NONE) {
-            $content = mb_convert_encoding($content, 'UTF-8', 'UTF-8,GBK,ISO-8859-1');
-            $data = json_decode($content, true);
+            // Fix encoding
+            if (function_exists('mb_convert_encoding')) {
+                $content = mb_convert_encoding($content, 'UTF-8', 'UTF-8,GBK,ISO-8859-1');
+                $data = json_decode($content, true);
+            }
         }
         
         if (!is_array($data)) $data = [];
@@ -109,7 +113,7 @@ function atomicAppend($filename, $newItem) {
         return true;
     }
     fclose($fp);
-    return false;
+    return "Could not acquire lock for $filename";
 }
 
 /**
@@ -119,35 +123,36 @@ function atomicLockItem($inventoryId, $matchedTime) {
     global $baseDir;
     $filePath = $baseDir . '/shops.json';
     
+    if (!file_exists($filePath)) return "shops.json not found";
+    
     $fp = fopen($filePath, 'c+b');
-    if (!$fp) return false;
+    if (!$fp) return "Could not open shops.json";
     
     if (flock($fp, LOCK_EX)) {
         rewind($fp);
         $content = stream_get_contents($fp);
         
-        // v1.6.5.2: Safe Decode - Browser might have sent non-UTF8 or broken chars
         $data = json_decode($content, true);
         if ($data === null && json_last_error() !== JSON_ERROR_NONE) {
-            // Attempt to fix encoding if broken
-            $content = mb_convert_encoding($content, 'UTF-8', 'UTF-8,GBK,ISO-8859-1');
-            $data = json_decode($content, true);
+            if (function_exists('mb_convert_encoding')) {
+                $content = mb_convert_encoding($content, 'UTF-8', 'UTF-8,GBK,ISO-8859-1');
+                $data = json_decode($content, true);
+            }
         }
         
         if (!is_array($data)) {
             flock($fp, LOCK_UN);
             fclose($fp);
-            return false; // Don't wipe data if it's not an array
+            return "shops.json is not a valid array, JSON error: " . json_last_error_msg();
         }
         
         $found = false;
         foreach ($data as &$account) {
             if (!isset($account['inventory']) || !is_array($account['inventory'])) continue;
             foreach ($account['inventory'] as &$item) {
-                // Precise string comparison for safety
                 if ((string)$item['id'] === (string)$inventoryId) {
                     $item['internalStatus'] = 'occupied';
-                    $item['lastMatchedTime'] = $matchedTime; // Keep original type (might be float/string)
+                    $item['lastMatchedTime'] = $matchedTime;
                     $found = true;
                     break 2;
                 }
@@ -157,16 +162,25 @@ function atomicLockItem($inventoryId, $matchedTime) {
         if ($found) {
             ftruncate($fp, 0);
             rewind($fp);
-            fwrite($fp, json_encode($data, JSON_UNESCAPED_UNICODE));
+            $json = json_encode($data, JSON_UNESCAPED_UNICODE);
+            if ($json === false) {
+                flock($fp, LOCK_UN);
+                fclose($fp);
+                return "JSON encoding failed: " . json_last_error_msg();
+            }
+            fwrite($fp, $json);
             fflush($fp);
+            flock($fp, LOCK_UN);
+            fclose($fp);
+            return true;
         }
         
         flock($fp, LOCK_UN);
         fclose($fp);
-        return $found;
+        return "Item $inventoryId not found in shops.json";
     }
     fclose($fp);
-    return false;
+    return "Could not acquire exclusive lock for shops.json";
 }
 
 function getClientIp() {
@@ -217,20 +231,22 @@ try {
             if ($_SERVER['REQUEST_METHOD'] !== 'POST') jsonResponse(['error' => 'POST required'], 405);
             $input = json_decode(file_get_contents('php://input'), true);
             if (!$input) jsonResponse(['error' => 'Invalid data'], 400);
-            if (atomicAppend('orders.json', $input)) {
+            $res = atomicAppend('orders.json', $input);
+            if ($res === true) {
                 jsonResponse(['success' => true]);
             } else {
-                jsonResponse(['error' => 'Failed to add order'], 500);
+                jsonResponse(['error' => $res], 500);
             }
             break;
         case 'lock_inventory':
             if ($_SERVER['REQUEST_METHOD'] !== 'POST') jsonResponse(['error' => 'POST required'], 405);
             $input = json_decode(file_get_contents('php://input'), true);
             if (!$input || !isset($input['id'])) jsonResponse(['error' => 'Invalid data'], 400);
-            if (atomicLockItem($input['id'], isset($input['time']) ? $input['time'] : time()*1000)) {
+            $res = atomicLockItem($input['id'], isset($input['time']) ? $input['time'] : time()*1000);
+            if ($res === true) {
                 jsonResponse(['success' => true]);
             } else {
-                jsonResponse(['error' => 'Failed to lock item'], 500);
+                jsonResponse(['error' => $res], 500);
             }
             break;
         case 'get_ip':
