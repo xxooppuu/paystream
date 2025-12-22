@@ -111,7 +111,7 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
 
     const adjustedAmount = getAdjustedAmount(amountInput);
 
-    const checkIpLimit = async () => {
+    const checkIpLimit = async (silent = false) => {
         if (!config || !visitorIp || !config.ipLimitTime || !config.ipLimitCount) return true;
 
         // Check Whitelist
@@ -137,7 +137,7 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
             const remaining = Math.max(0, config.ipLimitCount - count);
             setIpUsage(`${config.ipLimitTime}小时内已拉单 ${count}/${config.ipLimitCount} 次，还剩 ${remaining} 次`);
 
-            if (count >= config.ipLimitCount) {
+            if (!silent && count >= config.ipLimitCount) {
                 // Find when the oldest log expires
                 const oldest = Math.min(...recentLogs.map((l: any) => l.timestamp));
                 const nextAvail = oldest + windowMs;
@@ -201,7 +201,7 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
             if (info) {
                 setOrderInfo(info);
                 await saveIpLog(); // Successfully generated order, log it
-                await checkIpLimit(); // Refresh the count displayed in footer
+                await checkIpLimit(true); // Silent refresh count displayed in footer
             }
         } catch (e) {
             // Error handled in hook
@@ -264,23 +264,20 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
     return (
         <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
             <div className="w-full max-w-md bg-white rounded-3xl shadow-xl overflow-hidden relative">
-                {/* Header */}
-                <div className="bg-gradient-to-r from-indigo-600 to-violet-600 p-8 text-white text-center relative overflow-hidden">
-                    <div className="absolute top-0 left-0 w-full h-full bg-white opacity-5 transform -skew-x-12"></div>
-                    <div className="relative z-10">
-                        <h1 className="text-2xl font-bold mb-1">{config.title || '安全支付收银台'}</h1>
-                        <p className="text-indigo-100 text-sm opacity-90">PayStream Secure Checkout</p>
+                {/* Header - Improved v1.6.4 Aesthetics */}
+                <div className="bg-gradient-to-br from-indigo-700 via-indigo-600 to-violet-600 p-10 text-white text-center relative overflow-hidden">
+                    <div className="absolute top-0 left-0 w-full h-full bg-white/5 transform -skew-x-12"></div>
+                    <div className="relative z-10 flex flex-col items-center">
+                        <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center mb-3 backdrop-blur-md border border-white/30 shadow-xl">
+                            <ShieldCheck className="w-7 h-7 text-white" />
+                        </div>
+                        <h1 className="text-2xl font-bold tracking-tight">{config?.title || config?.name || '安全支付收银台'}</h1>
+                        <p className="text-indigo-100/70 text-sm mt-1 font-medium">PayStream Secure Checkout</p>
                     </div>
                 </div>
 
-                {/* Content */}
+                {/* Content - Removed Top Duplicate Notice */}
                 <div className="p-8">
-                    {config.notice && config.isOpen !== false && (
-                        <div className="bg-blue-50 text-blue-700 text-sm p-4 rounded-xl mb-6 flex items-start">
-                            <AlertCircle className="w-5 h-5 mr-2 flex-shrink-0 mt-0.5" />
-                            <span>{config.notice}</span>
-                        </div>
-                    )}
 
                     {config.isOpen === false ? (
                         <div className="text-center py-12 space-y-6 animate-fade-in">
@@ -465,7 +462,7 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
                     )}
 
                     <div className="absolute bottom-4 left-0 right-0 text-center text-[10px] text-slate-300 pointer-events-none space-y-1">
-                        <div>PayStream v1.6.3 (Build: {new Date().toLocaleTimeString()})</div>
+                        <div>PayStream v1.6.4 (Build: {new Date().toLocaleTimeString()})</div>
                         {visitorIp && (
                             <div className="opacity-50">
                                 IP: {visitorIp} {ipUsage ? ` / ${ipUsage}` : ''} / SYNC: {Math.abs(clockDrift) > 1000 ? 'ADJ' : 'OK'}
