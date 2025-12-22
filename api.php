@@ -64,6 +64,26 @@ function handleFileRequest($filename, $default = []) {
     }
 }
 
+function getClientIp() {
+    $keys = [
+        'HTTP_CF_CONNECTING_IP', // Cloudflare
+        'HTTP_X_FORWARDED_FOR', 
+        'HTTP_X_REAL_IP',
+        'HTTP_CLIENT_IP',
+        'REMOTE_ADDR'
+    ];
+    foreach ($keys as $key) {
+        if (!empty($_SERVER[$key])) {
+            $ips = explode(',', $_SERVER[$key]);
+            $ip = trim($ips[0]); // Take the first one
+            if (filter_var($ip, FILTER_VALIDATE_IP)) {
+                return $ip;
+            }
+        }
+    }
+    return '0.0.0.0';
+}
+
 /* ---------------------------
    ROUTER
    --------------------------- */
@@ -89,7 +109,10 @@ try {
             handleFileRequest('ip_logs.json');
             break;
         case 'get_ip':
-            jsonResponse(['ip' => $_SERVER['REMOTE_ADDR']]);
+            jsonResponse([
+                'ip' => getClientIp(),
+                'serverTime' => time() * 1000 // In milliseconds
+            ]);
             break;
         
         case 'proxy':

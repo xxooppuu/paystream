@@ -20,6 +20,7 @@ export const usePaymentProcess = () => {
     const [currentBuyer, setCurrentBuyer] = useState<BuyerAccount | null>(null);
     const [lockedItem, setLockedItem] = useState<InventoryItem | null>(null);
     const [queueEndTime, setQueueEndTime] = useState<number | null>(null);
+    const [clockDrift, setClockDrift] = useState(0);
 
     // Internal Data
     const [buyers, setBuyers] = useState<BuyerAccount[]>([]);
@@ -40,6 +41,15 @@ export const usePaymentProcess = () => {
         fetch(getApiUrl('settings'))
             .then(res => res.json())
             .then(data => setSettings(data))
+            .catch(console.error);
+
+        fetch(getApiUrl('get_ip'))
+            .then(res => res.json())
+            .then(data => {
+                if (data.serverTime) {
+                    setClockDrift(data.serverTime - Date.now());
+                }
+            })
             .catch(console.error);
     }, []);
 
@@ -93,7 +103,7 @@ export const usePaymentProcess = () => {
                 status: status,
                 channel: 'Zhuanzhuan',
                 method: 'WeChat',
-                createdAt: oldOrder?.createdAt || new Date().toISOString(),
+                createdAt: oldOrder?.createdAt || new Date(Date.now() + clockDrift).toISOString(),
                 inventoryId: dataOverride?.inventoryId || oldOrder?.inventoryId || lockedItem?.id,
                 accountId: dataOverride?.accountId || oldOrder?.accountId || lockedItem?.accountId,
                 buyerId: actingBuyer.id

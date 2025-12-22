@@ -50,6 +50,8 @@ const App: React.FC = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true); // Default open on desktop
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1024);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [settings, setSettings] = useState<any>({});
+  const [clockDrift, setClockDrift] = useState(0);
 
   // Fetch Orders from Local Storage
   const fetchOrders = async () => {
@@ -69,6 +71,19 @@ const App: React.FC = () => {
   // Also fetch on mount
   useEffect(() => {
     fetchOrders();
+    fetch(getApiUrl('settings'))
+      .then(res => res.json())
+      .then(data => setSettings(data))
+      .catch(console.error);
+
+    fetch(getApiUrl('get_ip'))
+      .then(res => res.json())
+      .then(data => {
+        if (data.serverTime) {
+          setClockDrift(data.serverTime - Date.now());
+        }
+      })
+      .catch(console.error);
   }, []);
 
   // Helper: Perform API Cancellation (Manual or Auto)
@@ -213,7 +228,9 @@ const App: React.FC = () => {
           const o = updatedOrders[i];
           if (o.status === OrderStatus.PENDING) {
             const createdTime = new Date(o.createdAt).getTime();
-            if (now - createdTime > 3 * 60 * 1000) { // 3 minutes
+            const validitySec = settings?.validityDuration ? Number(settings.validityDuration) : 180;
+            const now = Date.now() + clockDrift;
+            if (now - createdTime > validitySec * 1000) { // Dynamic validity with sync time
               console.log(`Auto-cancelling expired order: ${o.id}`);
 
               // Attempt API Cancel
@@ -262,7 +279,7 @@ const App: React.FC = () => {
       }
     };
 
-    const interval = setInterval(checkExpiredOrders, 30000); // 30s
+    const interval = setInterval(checkExpiredOrders, 10000); // 10s for timely release
     return () => clearInterval(interval);
   }, [currentView]);
 
