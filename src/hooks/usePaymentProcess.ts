@@ -1,5 +1,5 @@
-import { useState, useCallback, useEffect } from 'react';
-import { InventoryItem, Order, StoreAccount } from '../types';
+import { useState, useCallback } from 'react';
+import { InventoryItem, Order, StoreAccount, OrderStatus } from '../types';
 import { getApiUrl } from '../config';
 import { releaseInventory } from '../utils/orderActions';
 
@@ -15,15 +15,15 @@ export const usePaymentProcess = (amount: number, onComplete: (order: Order) => 
     const [order, setOrder] = useState<Order | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [queueEndTime, setQueueEndTime] = useState<number | null>(null);
-    const [accounts, setAccounts] = useState<StoreAccount[]>([]);
-    const [settings, setSettings] = useState<any>(null);
+    const [freshAccounts, setAccounts] = useState<StoreAccount[]>([]);
+    const [, setSettings] = useState<any>(null);
 
     const addLog = (msg: string) => {
         const time = new Date().toLocaleTimeString('zh-CN', { hour12: false });
         setLogs(prev => [`[${time}] ${msg}`, ...prev]);
     };
 
-    // v1.8.0: Server-Side Atomic Match & Lock
+    // v1.8.1: Server-Side Atomic Match & Lock with Timeout
     const findAndLockInventory = async (excludeIds: string[] = []): Promise<{ item: InventoryItem; freshAccounts: StoreAccount[] }> => {
         const startTime = Date.now();
         const endTime = startTime + QUEUE_TIMEOUT_MS;
@@ -35,7 +35,7 @@ export const usePaymentProcess = (amount: number, onComplete: (order: Order) => 
         while (Date.now() < endTime) {
             attempts++;
 
-            // 1. Fetch Latest Settings to get specificShopId
+            // 1. Fetch Latest Settings
             const setRes = await fetch(getApiUrl('settings') + `&_t=${Date.now()}`);
             const freshSettings = await setRes.json();
             setSettings(freshSettings);
@@ -44,46 +44,59 @@ export const usePaymentProcess = (amount: number, onComplete: (order: Order) => 
                 addLog(`🔍 扫描库存 (第${attempts}次): 正在请求服务端原子匹配...`);
             }
 
-            // 2. Call Server-Side Atomic Match
-            const matchRes = await fetch(getApiUrl('match_and_lock'), {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    price: amount,
-                    time: Date.now(),
-                    filters: {
-                        specificShopId: freshSettings?.productMode === 'shop' ? freshSettings?.specificShopId : null,
-                        excludeIds: excludeIds,
-                        validityDuration: freshSettings?.validityDuration || 180
-                    }
-                })
-            });
+            // 2. Call Server-Side Atomic Match with Timeout
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 10000);
 
-            if (matchRes.ok) {
-                const result = await matchRes.json();
-                if (result.success) {
-                    if (isQueueing) addLog('排队结束，匹配成功！');
-                    addLog(`✅ 匹配成功: ${result.data.item.title || result.data.item.id}`);
-                    return {
-                        item: result.data.item,
-                        freshAccounts: [result.data.account]
-                    };
+            try {
+                const matchRes = await fetch(getApiUrl('match_and_lock'), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    signal: controller.signal,
+                    body: JSON.stringify({
+                        price: amount,
+                        time: Date.now(),
+                        filters: {
+                            specificShopId: freshSettings?.productMode === 'shop' ? freshSettings?.specificShopId : null,
+                            excludeIds: excludeIds,
+                            validityDuration: freshSettings?.validityDuration || 180
+                        }
+                    })
+                });
+                clearTimeout(timeoutId);
+
+                if (matchRes.ok) {
+                    const result = await matchRes.json();
+                    if (result.success) {
+                        if (isQueueing) addLog('排队结束，匹配成功！');
+                        addLog(`✅ 匹配成功: ${result.data.item.title || result.data.item.id}`);
+                        return {
+                            item: result.data.item,
+                            freshAccounts: [result.data.account]
+                        };
+                    }
+                } else if (matchRes.status === 404) {
+                    if (!isQueueing) {
+                        isQueueing = true;
+                        setStep(0.5);
+                        addLog('当前订单过多，进入排队模式...');
+                    }
+                } else {
+                    const errorData = await matchRes.json().catch(() => ({}));
+                    const errMsg = errorData.error || 'Server matching failed';
+                    addLog(`❌ 匹配失败: ${errMsg}`);
+                    throw new Error(errMsg);
                 }
-            } else if (matchRes.status === 404) {
-                // No inventory found
-                if (!isQueueing) {
-                    isQueueing = true;
-                    setStep(0.5); // Queue Step
-                    addLog('当前订单过多，进入排队模式...');
+            } catch (err: any) {
+                if (err.name === 'AbortError') {
+                    addLog('⚠️ 匹配请求超时，正在重试...');
+                } else {
+                    throw err;
                 }
-            } else {
-                const errorData = await matchRes.json().catch(() => ({}));
-                const errMsg = errorData.error || 'Server matching failed';
-                addLog(`❌ 匹配失败: ${errMsg}`);
-                throw new Error(errMsg);
+            } finally {
+                clearTimeout(timeoutId);
             }
 
-            // Wait before retry
             await delay(attempts < 3 ? 1000 : POLLING_INTERVAL_MS);
         }
 
@@ -99,16 +112,14 @@ export const usePaymentProcess = (amount: number, onComplete: (order: Order) => 
             setMatchedItem(null);
             setOrder(null);
 
-            // Match & Lock
-            const { item, freshAccounts } = await findAndLockInventory();
+            const { item, freshAccounts: currAccounts } = await findAndLockInventory();
             setMatchedItem(item);
-            setAccounts(freshAccounts);
+            setAccounts(currAccounts);
             setStep(2);
 
-            // Step 3: Change Price
             setStep(3);
             addLog(`正在改价为 ¥${amount}...`);
-            const sellerAccount = freshAccounts.find(a => a.id === item.accountId);
+            const sellerAccount = currAccounts.find(a => a.id === item.accountId);
             if (!sellerAccount) throw new Error('卖家账号异常');
 
             const changePriceRes = await fetch(getApiUrl('proxy'), {
@@ -118,7 +129,7 @@ export const usePaymentProcess = (amount: number, onComplete: (order: Order) => 
                     targetUrl: 'https://app.zhuanzhuan.com/zzx/transfer/modifyProductPrice',
                     method: 'POST',
                     cookie: sellerAccount.cookie,
-                    body: `productId=${item.id}&price=${amount * 100}`, // 转转以分为单位
+                    body: `productId=${item.id}&price=${amount * 100}`,
                     headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
                 })
             });
@@ -126,14 +137,11 @@ export const usePaymentProcess = (amount: number, onComplete: (order: Order) => 
             if (priceData.respCode !== '0') throw new Error(priceData.respMsg || '改价失败');
             addLog('改价成功');
 
-            // Step 4: Create Order
             setStep(4);
             addLog('正在下单...');
-            const buyerRes = await fetch(getApiUrl('get_buyer_to_order')); // Placeholder: assuming we have an endpoint to pick a balanced buyer
-            // Wait, we need a buyer. For now, let's pick any idle buyer from local list
             const bRes = await fetch(getApiUrl('buyers'));
             const buyers = await bRes.json();
-            const buyer = buyers.find((b: any) => b.status === '正常');
+            const buyer = buyers.find((b: any) => b.status === '正常' || b.status === undefined);
             if (!buyer) throw new Error('可用买家账号不足');
 
             const orderRes = await fetch(getApiUrl('proxy'), {
@@ -150,18 +158,22 @@ export const usePaymentProcess = (amount: number, onComplete: (order: Order) => 
             const orderData = await orderRes.json();
             if (orderData.respCode !== '0') throw new Error(orderData.respMsg || '下单失败');
 
+            // v1.8.2: Type-safe order creation
             const newOrder: Order = {
                 id: `ZZPAY${Date.now()}`,
-                externalId: orderData.respData.orderId,
+                orderNo: orderData.respData.orderId,
+                customer: buyer.remark || 'Guest',
                 amount,
-                status: 'pending',
+                currency: 'CNY',
+                status: OrderStatus.PENDING,
+                channel: 'default',
+                method: 'default',
                 createdAt: new Date().toISOString(),
                 buyerId: buyer.id,
                 inventoryId: item.id,
-                paymentMethod: 'default'
+                accountId: item.accountId
             };
 
-            // Add Order to DB
             await fetch(getApiUrl('add_order'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -169,10 +181,9 @@ export const usePaymentProcess = (amount: number, onComplete: (order: Order) => 
             });
 
             setOrder(newOrder);
-            addLog(`下单成功! 订单号: ${newOrder.externalId}`);
+            addLog(`下单成功! 订单号: ${newOrder.orderNo}`);
             setStep(5);
 
-            // Step 5: Finalized Success
             setTimeout(() => {
                 setStep(6);
                 onComplete(newOrder);
@@ -187,5 +198,5 @@ export const usePaymentProcess = (amount: number, onComplete: (order: Order) => 
         }
     }, [amount, onComplete, matchedItem]);
 
-    return { step, logs, matchedItem, order, error, queueEndTime, startProcess };
+    return { step, logs, matchedItem, order, error, queueEndTime, startProcess, freshAccounts };
 };
