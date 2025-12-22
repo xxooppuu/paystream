@@ -462,7 +462,7 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
                     )}
 
                     <div className="absolute bottom-4 left-0 right-0 text-center text-[10px] text-slate-300 pointer-events-none space-y-1">
-                        <div>PayStream v1.6.4 (Build: {new Date().toLocaleTimeString()})</div>
+                        <div>PayStream v1.6.5 (Build: {new Date().toLocaleTimeString()})</div>
                         {visitorIp && (
                             <div className="opacity-50">
                                 IP: {visitorIp} {ipUsage ? ` / ${ipUsage}` : ''} / SYNC: {Math.abs(clockDrift) > 1000 ? 'ADJ' : 'OK'}

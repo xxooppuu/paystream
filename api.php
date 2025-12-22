@@ -32,36 +32,122 @@ $baseDir = __DIR__; // Store json files in the same directory
    HELPER FUNCTIONS
    --------------------------- */
 
-function jsonResponse($data, $code = 200) {
-    http_response_code($code);
-    header('Content-Type: application/json');
-    echo json_encode($data, JSON_UNESCAPED_UNICODE);
-    exit;
-}
-
+/**
+ * Handles JSON file storage with flock (file locking) to prevent concurrency issues.
+ */
 function handleFileRequest($filename, $default = []) {
     global $baseDir, $method;
     $filePath = $baseDir . '/' . $filename;
 
     if ($method === 'GET') {
-        if (file_exists($filePath)) {
-            $content = file_get_contents($filePath);
-            header('Content-Type: application/json');
-            echo $content ? $content : json_encode($default);
-        } else {
+        if (!file_exists($filePath)) {
             jsonResponse($default);
         }
+        $fp = fopen($filePath, 'rb');
+        if (!$fp) jsonResponse($default);
+        
+        flock($fp, LOCK_SH); // Shared lock for reading
+        $content = stream_get_contents($fp);
+        flock($fp, LOCK_UN);
+        fclose($fp);
+        
+        header('Content-Type: application/json');
+        echo $content ? $content : json_encode($default);
+        exit;
     } else if ($method === 'POST') {
         $input = file_get_contents('php://input');
         if (!json_decode($input)) {
             jsonResponse(['error' => 'Invalid JSON'], 400);
         }
-        if (file_put_contents($filePath, $input)) {
+        
+        // Atomic Write with Exclusive Lock
+        $fp = fopen($filePath, 'cb'); // Open for reading/writing; place pointer at beginning
+        if (!$fp) jsonResponse(['error' => 'Could not open file'], 500);
+        
+        if (flock($fp, LOCK_EX)) {
+            ftruncate($fp, 0); // Clear file
+            fwrite($fp, $input);
+            fflush($fp);
+            flock($fp, LOCK_UN);
+            fclose($fp);
             jsonResponse(['success' => true]);
         } else {
-            jsonResponse(['error' => 'Failed to write file'], 500);
+            fclose($fp);
+            jsonResponse(['error' => 'Could not lock file'], 500);
         }
     }
+}
+
+/**
+ * Atomically appends a single item to a JSON array file.
+ */
+function atomicAppend($filename, $newItem) {
+    global $baseDir;
+    $filePath = $baseDir . '/' . $filename;
+    
+    $fp = fopen($filePath, 'c+b'); // Read/Write, create if not exist
+    if (!$fp) return false;
+    
+    if (flock($fp, LOCK_EX)) {
+        $content = stream_get_contents($fp);
+        $data = json_decode($content, true);
+        if (!is_array($data)) $data = [];
+        
+        $data[] = $newItem;
+        
+        ftruncate($fp, 0);
+        rewind($fp);
+        fwrite($fp, json_encode($data, JSON_UNESCAPED_UNICODE));
+        fflush($fp);
+        flock($fp, LOCK_UN);
+        fclose($fp);
+        return true;
+    }
+    fclose($fp);
+    return false;
+}
+
+/**
+ * Atomically locks an inventory item.
+ */
+function atomicLockItem($inventoryId, $matchedTime) {
+    global $baseDir;
+    $filePath = $baseDir . '/shops.json';
+    
+    $fp = fopen($filePath, 'c+b');
+    if (!$fp) return false;
+    
+    if (flock($fp, LOCK_EX)) {
+        $content = stream_get_contents($fp);
+        $accounts = json_decode($content, true);
+        if (!is_array($accounts)) $accounts = [];
+        
+        $found = false;
+        foreach ($accounts as &$account) {
+            if (!isset($account['inventory']) || !is_array($account['inventory'])) continue;
+            foreach ($account['inventory'] as &$item) {
+                if ($item['id'] === $inventoryId) {
+                    $item['internalStatus'] = 'occupied';
+                    $item['lastMatchedTime'] = (int)$matchedTime;
+                    $found = true;
+                    break 2;
+                }
+            }
+        }
+        
+        if ($found) {
+            ftruncate($fp, 0);
+            rewind($fp);
+            fwrite($fp, json_encode($accounts, JSON_UNESCAPED_UNICODE));
+            fflush($fp);
+        }
+        
+        flock($fp, LOCK_UN);
+        fclose($fp);
+        return $found;
+    }
+    fclose($fp);
+    return false;
 }
 
 function getClientIp() {
@@ -100,13 +186,33 @@ try {
             handleFileRequest('orders.json');
             break;
         case 'settings':
-            handleFileRequest('settings.json', new stdClass()); // Empty object for settings
+            handleFileRequest('settings.json', (object)[]); 
             break;
         case 'payment_pages':
             handleFileRequest('payment_pages.json');
             break;
         case 'ip_logs':
             handleFileRequest('ip_logs.json');
+            break;
+        case 'add_order':
+            if ($_SERVER['REQUEST_METHOD'] !== 'POST') jsonResponse(['error' => 'POST required'], 405);
+            $input = json_decode(file_get_contents('php://input'), true);
+            if (!$input) jsonResponse(['error' => 'Invalid data'], 400);
+            if (atomicAppend('orders.json', $input)) {
+                jsonResponse(['success' => true]);
+            } else {
+                jsonResponse(['error' => 'Failed to add order'], 500);
+            }
+            break;
+        case 'lock_inventory':
+            if ($_SERVER['REQUEST_METHOD'] !== 'POST') jsonResponse(['error' => 'POST required'], 405);
+            $input = json_decode(file_get_contents('php://input'), true);
+            if (!$input || !isset($input['id'])) jsonResponse(['error' => 'Invalid data'], 400);
+            if (atomicLockItem($input['id'], isset($input['time']) ? $input['time'] : time()*1000)) {
+                jsonResponse(['success' => true]);
+            } else {
+                jsonResponse(['error' => 'Failed to lock item'], 500);
+            }
             break;
         case 'get_ip':
             jsonResponse([
@@ -136,13 +242,11 @@ try {
             curl_setopt($ch, CURLOPT_URL, $targetUrl);
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
             curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false); // For simple dev/deployment
+            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false); 
             
-            // Methods
             if ($proxyMethod === 'POST') {
                 curl_setopt($ch, CURLOPT_POST, true);
                 if ($body) {
-                    // Check if body is array (JSON) or string
                     $postData = is_array($body) ? json_encode($body) : $body;
                     curl_setopt($ch, CURLOPT_POSTFIELDS, $postData);
                 }
@@ -150,23 +254,18 @@ try {
                 curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $proxyMethod);
             }
 
-            // Headers
             $reqHeaders = [];
             $reqHeaders[] = 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
             if ($cookie) {
                 $reqHeaders[] = 'Cookie: ' . $cookie;
             }
-            // Merge custom headers
             foreach ($headers as $k => $v) {
-                // Skip Host header to avoid conflicts usually
                 if (strtolower($k) === 'host') continue;
                 $reqHeaders[] = "$k: $v";
             }
-            // Ensure Content-Type is set if body exists and not already set
-            // (Simple logic, can be improved)
             
             curl_setopt($ch, CURLOPT_HTTPHEADER, $reqHeaders);
-            curl_setopt($ch, CURLOPT_HEADER, false); // We don't want headers in output
+            curl_setopt($ch, CURLOPT_HEADER, false);
 
             $response = curl_exec($ch);
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -178,14 +277,12 @@ try {
             }
 
             http_response_code($httpCode);
-            // Try to detect content type
-            // But usually we just return JSON from these APIs
             header('Content-Type: application/json'); 
             echo $response;
             break;
 
         default:
-            jsonResponse(['status' => 'ok', 'message' => 'API is running. Usage: ?act=shops|buyers|orders|settings|proxy']);
+            jsonResponse(['status' => 'ok', 'message' => 'API is running.']);
             break;
     }
 

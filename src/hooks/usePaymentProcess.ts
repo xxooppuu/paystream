@@ -88,35 +88,28 @@ export const usePaymentProcess = () => {
         if (!actingOrderId || !actingBuyer) return;
 
         try {
-            const getRes = await fetch(getApiUrl('orders'));
-            let existing: Order[] = [];
-            if (getRes.ok) existing = await getRes.json();
-
-            const oldOrder = existing.find(o => o.id === actingOrderId);
-
+            // v1.6.5: Atomic Append via Backend
             const newOrder: Order = {
                 id: actingOrderId,
-                orderNo: dataOverride?.orderNo || (oldOrder?.orderNo) || `T${actingOrderId}`, // Use override or fallback
+                orderNo: dataOverride?.orderNo || `T${actingOrderId}`,
                 customer: actingBuyer.remark || '测试买家',
-                amount: dataOverride?.amount || oldOrder?.amount || 0,
+                amount: dataOverride?.amount || 0,
                 currency: 'CNY',
                 status: status,
                 channel: 'Zhuanzhuan',
                 method: 'WeChat',
-                createdAt: oldOrder?.createdAt || new Date(Date.now() + clockDrift).toISOString(),
-                inventoryId: dataOverride?.inventoryId || oldOrder?.inventoryId || lockedItem?.id,
-                accountId: dataOverride?.accountId || oldOrder?.accountId || lockedItem?.accountId,
+                createdAt: new Date(Date.now() + clockDrift).toISOString(),
+                inventoryId: dataOverride?.inventoryId || lockedItem?.id,
+                accountId: dataOverride?.accountId || lockedItem?.accountId,
                 buyerId: actingBuyer.id
             };
 
-            const otherOrders = existing.filter(o => o.id !== newOrder.id);
-            const newOrders = [newOrder, ...otherOrders];
-
-            await fetch(getApiUrl('orders'), {
+            await fetch(getApiUrl('add_order'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(newOrders)
+                body: JSON.stringify(newOrder) // Sending ONLY the new order
             });
+            console.log(`[Atomic] Order ${actingOrderId} saved successfully.`);
         } catch (err) {
             console.error('Save order failed', err);
         }
@@ -223,15 +216,23 @@ export const usePaymentProcess = () => {
                 // Found!
                 const item = idleItems[Math.floor(Math.random() * idleItems.length)];
 
-                // Lock it
-                const updatedAccounts = freshAccounts.map(a => ({
-                    ...a,
-                    inventory: a.inventory?.map(i => i.id === item.id ? { ...i, internalStatus: 'occupied' as const, lastMatchedTime: Date.now() } : i)
-                }));
-                await saveShops(updatedAccounts);
+                // v1.6.5: Atomic Lock via Backend
+                const lockRes = await fetch(getApiUrl('lock_inventory'), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        id: item.id,
+                        time: Date.now()
+                    })
+                });
+
+                if (!lockRes.ok) {
+                    addLog('❌ 锁定商品失败，请重试');
+                    throw new Error('Lock failed');
+                }
 
                 if (isQueueing) addLog('排队结束，匹配成功！');
-                return { item, freshAccounts: updatedAccounts };
+                return { item, freshAccounts: [] }; // freshAccounts no longer used for manual save
             }
 
             // Not found, enter queue mode if not already
