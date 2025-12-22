@@ -15,6 +15,12 @@ export const PaymentPages: React.FC = () => {
     const [maxAmount, setMaxAmount] = useState('');
     const [notice, setNotice] = useState('');
 
+    // IP Limit State
+    const [isOpen, setIsOpen] = useState(true);
+    const [ipLimitTime, setIpLimitTime] = useState('');
+    const [ipLimitCount, setIpLimitCount] = useState('');
+    const [ipWhitelist, setIpWhitelist] = useState('');
+
     const fetchPages = async () => {
         setLoading(true);
         try {
@@ -38,19 +44,26 @@ export const PaymentPages: React.FC = () => {
     const handleSave = async () => {
         if (!title) return alert('请输入标题');
 
+        const pageId = editId || Date.now().toString();
+        const existingPage = pages.find(p => p.id === pageId);
+
         const newPage: PaymentPageConfig = {
-            id: Date.now().toString(),
+            id: pageId,
             title,
             channelId: 'default',
             minAmount: minAmount ? parseFloat(minAmount) : undefined,
             maxAmount: maxAmount ? parseFloat(maxAmount) : undefined,
             notice,
-            createdAt: Date.now()
+            isOpen,
+            ipLimitTime: ipLimitTime ? parseFloat(ipLimitTime) : undefined,
+            ipLimitCount: ipLimitCount ? parseInt(ipLimitCount) : undefined,
+            ipWhitelist,
+            createdAt: existingPage?.createdAt || Date.now()
         };
 
         let updatedPages;
         if (editId) {
-            updatedPages = pages.map(p => p.id === editId ? { ...newPage, id: editId, createdAt: p.createdAt } : p);
+            updatedPages = pages.map(p => p.id === editId ? newPage : p);
         } else {
             updatedPages = [...pages, newPage];
         }
@@ -64,7 +77,12 @@ export const PaymentPages: React.FC = () => {
         setPages(updatedPages);
         setShowAddModal(false);
         setEditId(null);
+        resetForm();
+    };
+
+    const resetForm = () => {
         setTitle(''); setMinAmount(''); setMaxAmount(''); setNotice('');
+        setIsOpen(true); setIpLimitTime(''); setIpLimitCount(''); setIpWhitelist('');
     };
 
     const handleEdit = (page: PaymentPageConfig) => {
@@ -73,7 +91,21 @@ export const PaymentPages: React.FC = () => {
         setMinAmount(page.minAmount?.toString() || '');
         setMaxAmount(page.maxAmount?.toString() || '');
         setNotice(page.notice || '');
+        setIsOpen(page.isOpen !== false); // Default true
+        setIpLimitTime(page.ipLimitTime?.toString() || '');
+        setIpLimitCount(page.ipLimitCount?.toString() || '');
+        setIpWhitelist(page.ipWhitelist || '');
         setShowAddModal(true);
+    };
+
+    const toggleOpen = async (id: string) => {
+        const updatedPages = pages.map(p => p.id === id ? { ...p, isOpen: p.isOpen === false } : p);
+        setPages(updatedPages);
+        await fetch(getApiUrl('payment_pages'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(updatedPages)
+        });
     };
 
     const handleDelete = async (id: string) => {
@@ -106,7 +138,7 @@ export const PaymentPages: React.FC = () => {
                     <p className="text-slate-500 text-sm">创建和管理对外的收款页面链接</p>
                 </div>
                 <button
-                    onClick={() => setShowAddModal(true)}
+                    onClick={() => { resetForm(); setEditId(null); setShowAddModal(true); }}
                     className="flex items-center space-x-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg transition-colors"
                 >
                     <Plus className="w-4 h-4" />
@@ -116,10 +148,15 @@ export const PaymentPages: React.FC = () => {
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {pages.map(page => (
-                    <div key={page.id} className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
+                    <div key={page.id} className={`bg-white p-6 rounded-xl border ${page.isOpen === false ? 'border-red-100 bg-red-50/10' : 'border-slate-200'} shadow-sm hover:shadow-md transition-shadow`}>
                         <div className="flex justify-between items-start mb-4">
                             <div>
-                                <h3 className="font-bold text-lg text-slate-800">{page.title}</h3>
+                                <div className="flex items-center gap-2">
+                                    <h3 className="font-bold text-lg text-slate-800">{page.title}</h3>
+                                    {page.isOpen === false && (
+                                        <span className="text-[10px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-bold">商家休息中</span>
+                                    )}
+                                </div>
                                 <div className="text-xs text-slate-500 mt-1">ID: {page.id}</div>
                             </div>
                             <button onClick={() => handleDelete(page.id)} className="text-slate-400 hover:text-red-500">
@@ -127,19 +164,25 @@ export const PaymentPages: React.FC = () => {
                             </button>
                         </div>
 
-                        <div className="mb-4">
+                        <div className="mb-4 flex gap-2">
                             <button
                                 onClick={() => handleEdit(page)}
                                 className="text-xs border border-indigo-200 text-indigo-600 px-2 py-1 rounded hover:bg-indigo-50 transition-colors"
                             >
                                 编辑配置
                             </button>
+                            <button
+                                onClick={() => toggleOpen(page.id)}
+                                className={`text-xs px-2 py-1 rounded transition-colors ${page.isOpen !== false ? 'bg-amber-100 text-amber-700 hover:bg-amber-200' : 'bg-green-100 text-green-700 hover:bg-green-200'}`}
+                            >
+                                {page.isOpen !== false ? '设为休息' : '开始营业'}
+                            </button>
                         </div>
 
                         <div className="space-y-2 text-sm text-slate-600 mb-6">
                             <div className="flex justify-between">
                                 <span>通道:</span>
-                                <span className="font-medium">默认通道 (自动凑整8)</span>
+                                <span className="font-medium">默认通道</span>
                             </div>
                             <div className="flex justify-between">
                                 <span>限额:</span>
@@ -148,8 +191,10 @@ export const PaymentPages: React.FC = () => {
                                 </span>
                             </div>
                             <div className="flex justify-between">
-                                <span>创建时间:</span>
-                                <span>{new Date(page.createdAt).toLocaleDateString()}</span>
+                                <span>频率限制:</span>
+                                <span className="font-medium">
+                                    {page.ipLimitTime && page.ipLimitCount ? `${page.ipLimitTime}小时/${page.ipLimitCount}次` : '无限制'}
+                                </span>
                             </div>
                         </div>
 
@@ -183,22 +228,22 @@ export const PaymentPages: React.FC = () => {
 
             {/* Add Modal */}
             {showAddModal && (
-                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-                    <div className="bg-white rounded-xl w-full max-w-md p-6 space-y-4">
+                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 overflow-y-auto">
+                    <div className="bg-white rounded-xl w-full max-w-lg p-6 space-y-4 my-8">
                         <h3 className="text-xl font-bold text-slate-800">{editId ? '编辑收款页' : '新增收款页'}</h3>
 
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1">页面标题 (展示给用户)</label>
-                            <input
-                                type="text"
-                                className="w-full px-4 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"
-                                placeholder="例如：VIP充值"
-                                value={title}
-                                onChange={e => setTitle(e.target.value)}
-                            />
-                        </div>
-
                         <div className="grid grid-cols-2 gap-4">
+                            <div className="col-span-2">
+                                <label className="block text-sm font-medium text-slate-700 mb-1">页面标题</label>
+                                <input
+                                    type="text"
+                                    className="w-full px-4 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"
+                                    placeholder="例如：VIP充值"
+                                    value={title}
+                                    onChange={e => setTitle(e.target.value)}
+                                />
+                            </div>
+
                             <div>
                                 <label className="block text-sm font-medium text-slate-700 mb-1">最小金额</label>
                                 <input
@@ -219,18 +264,60 @@ export const PaymentPages: React.FC = () => {
                             </div>
                         </div>
 
+                        <div className="border-t pt-4">
+                            <h4 className="text-sm font-bold text-slate-800 mb-3">安全与营业设置</h4>
+                            <div className="flex items-center justify-between bg-slate-50 p-3 rounded-lg mb-4">
+                                <span className="text-sm font-medium">当前营业状态</span>
+                                <button
+                                    onClick={() => setIsOpen(!isOpen)}
+                                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${isOpen ? 'bg-green-500' : 'bg-slate-300'}`}
+                                >
+                                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${isOpen ? 'translate-x-6' : 'translate-x-1'}`} />
+                                </button>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4 mb-4">
+                                <div>
+                                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">频率检查时间 (小时)</label>
+                                    <input
+                                        type="number"
+                                        className="w-full px-4 py-2 border border-slate-300 rounded-lg text-sm"
+                                        placeholder="例如: 1"
+                                        value={ipLimitTime}
+                                        onChange={e => setIpLimitTime(e.target.value)}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">允许付款次数 (次)</label>
+                                    <input
+                                        type="number"
+                                        className="w-full px-4 py-2 border border-slate-300 rounded-lg text-sm"
+                                        placeholder="例如: 3"
+                                        value={ipLimitCount}
+                                        onChange={e => setIpLimitCount(e.target.value)}
+                                    />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">IP 白名单 (不受限制，逗号隔开)</label>
+                                <textarea
+                                    className="w-full px-4 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 h-16 text-sm"
+                                    placeholder="127.0.0.1, 192.168.1.1"
+                                    value={ipWhitelist}
+                                    onChange={e => setIpWhitelist(e.target.value)}
+                                />
+                            </div>
+                        </div>
+
                         <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1">页面注意事项 (可选)</label>
+                            <label className="block text-sm font-medium text-slate-700 mb-1">页面注意事项 / 休息提示</label>
                             <textarea
-                                className="w-full px-4 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 h-24"
+                                className="w-full px-4 py-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 h-20 text-sm"
                                 placeholder="填写显示在支付页面的提示信息..."
                                 value={notice}
                                 onChange={e => setNotice(e.target.value)}
                             />
-                        </div>
-
-                        <div className="text-sm text-slate-500 bg-slate-50 p-3 rounded-lg">
-                            说明：当前使用默认通道，所有输入金额将自动向下取整到以 8 结尾（例如 513 → 508）。
                         </div>
 
                         <div className="flex justify-end gap-3 pt-4">

@@ -17,12 +17,19 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
     const [queueTimeLeft, setQueueTimeLeft] = useState<number | null>(null);
     const [orderInfo, setOrderInfo] = useState<{ internalOrderId: string; amount: number } | null>(null);
     const [isWeChat, setIsWeChat] = useState(false);
+    const [visitorIp, setVisitorIp] = useState<string | null>(null);
+    const [ipLimitError, setIpLimitError] = useState<string | null>(null);
 
     useEffect(() => {
         const ua = navigator.userAgent.toLowerCase();
         if (ua.match(/micromessenger/i)) {
             setIsWeChat(true);
         }
+        // Fetch IP
+        fetch(getApiUrl('get_ip'))
+            .then(res => res.json())
+            .then(data => setVisitorIp(data.ip))
+            .catch(console.error);
     }, []);
 
     // Logic from the hook
@@ -97,14 +104,82 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
 
     const adjustedAmount = getAdjustedAmount(amountInput);
 
+    const checkIpLimit = async () => {
+        if (!config || !visitorIp || !config.ipLimitTime || !config.ipLimitCount) return true;
+
+        // Check Whitelist
+        if (config.ipWhitelist) {
+            const whitelist = config.ipWhitelist.split(',').map(i => i.trim());
+            if (whitelist.includes(visitorIp)) return true;
+        }
+
+        try {
+            const res = await fetch(getApiUrl('ip_logs'));
+            const allLogs = res.ok ? await res.json() : [];
+            const pageLogs = Array.isArray(allLogs) ? allLogs.filter((l: any) => l.ip === visitorIp && l.pageId === pageId) : [];
+
+            const now = Date.now();
+            const windowMs = config.ipLimitTime * 60 * 60 * 1000;
+            const recentLogs = pageLogs.filter((l: any) => (now - l.timestamp) < windowMs);
+
+            if (recentLogs.length >= config.ipLimitCount) {
+                // Find when the oldest log expires
+                const oldest = Math.min(...recentLogs.map((l: any) => l.timestamp));
+                const nextAvail = oldest + windowMs;
+                const nextDate = new Date(nextAvail);
+                const timeStr = `${nextDate.getHours().toString().padStart(2, '0')}:${nextDate.getMinutes().toString().padStart(2, '0')}`;
+
+                setIpLimitError(`每隔${config.ipLimitTime}小时可提交订单${config.ipLimitCount}次，您已超出限制。${timeStr}后即可重新付款。`);
+                return false;
+            }
+        } catch (e) {
+            console.error("Failed to check IP logs", e);
+        }
+        return true;
+    };
+
+    const saveIpLog = async () => {
+        if (!visitorIp) return;
+        try {
+            const res = await fetch(getApiUrl('ip_logs'));
+            const allLogs = res.ok ? await res.json() : [];
+            const newLog = { ip: visitorIp, pageId, timestamp: Date.now() };
+            const updated = Array.isArray(allLogs) ? [...allLogs, newLog] : [newLog];
+
+            // Filter old logs (> 24h) to keep file small
+            const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
+            const filtered = updated.filter(l => l.timestamp > oneDayAgo);
+
+            await fetch(getApiUrl('ip_logs'), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(filtered)
+            });
+        } catch (e) {
+            console.error("Failed to save IP log", e);
+        }
+    };
+
     const handlePay = async () => {
         if (!config || adjustedAmount <= 0) return;
         if (config.minAmount && adjustedAmount < config.minAmount) return alert(`最小金额限制: ${config.minAmount}`);
         if (config.maxAmount && adjustedAmount > config.maxAmount) return alert(`最大金额限制: ${config.maxAmount}`);
 
+        // Check Business Status
+        if (config.isOpen === false) {
+            return alert('商家目前休息中，请稍后再试');
+        }
+
+        // Check IP Limit
+        const canPay = await checkIpLimit();
+        if (!canPay) return;
+
         try {
             const info = await startPayment(adjustedAmount);
-            if (info) setOrderInfo(info);
+            if (info) {
+                setOrderInfo(info);
+                saveIpLog(); // Successfully generated order, log it
+            }
         } catch (e) {
             // Error handled in hook
         }
@@ -177,14 +252,51 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
 
                 {/* Content */}
                 <div className="p-8">
-                    {config.notice && (
+                    {config.notice && config.isOpen !== false && (
                         <div className="bg-blue-50 text-blue-700 text-sm p-4 rounded-xl mb-6 flex items-start">
                             <AlertCircle className="w-5 h-5 mr-2 flex-shrink-0 mt-0.5" />
                             <span>{config.notice}</span>
                         </div>
                     )}
 
-                    {step === 0 && (
+                    {config.isOpen === false ? (
+                        <div className="text-center py-12 space-y-6 animate-fade-in">
+                            <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-6 text-slate-400">
+                                <Hourglass className="w-10 h-10" />
+                            </div>
+                            <div className="space-y-2">
+                                <h3 className="text-xl font-bold text-slate-800">商家休息中</h3>
+                                <p className="text-slate-500">很抱歉，当前暂不接受新订单</p>
+                            </div>
+                            {config.notice && (
+                                <div className="bg-amber-50 text-amber-800 p-4 rounded-xl text-sm border border-amber-100 text-left">
+                                    <div className="font-bold flex items-center gap-2 mb-1">
+                                        <AlertCircle className="w-4 h-4" />
+                                        <span>重要通知</span>
+                                    </div>
+                                    <p className="whitespace-pre-wrap">{config.notice}</p>
+                                </div>
+                            )}
+                            <button onClick={() => window.location.reload()} className="text-indigo-600 font-bold text-sm mt-4 hover:underline">
+                                点击刷新试试
+                            </button>
+                        </div>
+                    ) : ipLimitError ? (
+                        <div className="text-center py-12 space-y-6 animate-fade-in">
+                            <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mx-auto text-red-500">
+                                <Clock className="w-8 h-8" />
+                            </div>
+                            <div className="space-y-4">
+                                <h3 className="text-lg font-bold text-slate-800">付款频率超限</h3>
+                                <p className="text-slate-600 text-sm bg-red-50 p-4 rounded-xl border border-red-100 leading-relaxed">
+                                    {ipLimitError}
+                                </p>
+                                <button onClick={() => setIpLimitError(null)} className="bg-indigo-600 text-white px-8 py-3 rounded-xl font-bold">
+                                    我知道了
+                                </button>
+                            </div>
+                        </div>
+                    ) : step === 0 && (
                         <>
                             <div>
                                 <label className="block text-sm font-medium text-slate-700 mb-2">请输入支付金额</label>
@@ -330,7 +442,7 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
                     )}
 
                     <div className="absolute bottom-4 left-0 right-0 text-center text-xs text-slate-300 pointer-events-none">
-                        PayStream v1.5.16 (Build: {new Date().toLocaleTimeString()})
+                        PayStream v1.6.0 (Build: {new Date().toLocaleTimeString()})
                     </div>
                 </div>
             </div>

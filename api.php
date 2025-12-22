@@ -85,6 +85,12 @@ try {
         case 'payment_pages':
             handleFileRequest('payment_pages.json');
             break;
+        case 'ip_logs':
+            handleFileRequest('ip_logs.json');
+            break;
+        case 'get_ip':
+            jsonResponse(['ip' => $_SERVER['REMOTE_ADDR']]);
+            break;
         
         case 'proxy':
             if ($method !== 'POST') {

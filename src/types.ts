@@ -83,6 +83,10 @@ export interface PaymentPageConfig {
   maxAmount?: number;
   notice?: string;
   createdAt: number;
+  isOpen?: boolean;
+  ipLimitTime?: number; // In hours
+  ipLimitCount?: number;
+  ipWhitelist?: string; // Comma-separated
 }
 
 export type ViewState = 'dashboard' | 'orders' | 'inventory' | 'test-payment' | 'config' | 'channels' | 'settings' | 'payment-pages';
