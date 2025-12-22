@@ -1,8 +1,9 @@
-PayStream v1.7.2 - PERSISTENCE STABLE
-Status: SMART MERGE ENABLED
-Fixes: 
-- Backend Smart Merge in api.php (Prevents lock erasure during refresh)
-- Strict ID Mapping preservation
-- Atomic locking preserved across all UI updates
-Build Timestamp: 2025-12-23 07:22
-Final Production Audit: 100% Corrected
+PayStream v1.8.0 - ARCHITECTURAL HARDENING
+Status: SERVER-SIDE ATOMIC MATCHING
+Key Features:
+- New match_and_lock endpoint (Atomic pick & lock)
+- No-Loss Merge for orders.json (Deduplicates instead of overwrites)
+- Persistent internalStatus shielded from UI refreshes
+- Eliminated Frontend-Backend Race Condition window
+Build Timestamp: 2025-12-23 07:35
+Final Production Audit: STRONGLY RECOMMENDED

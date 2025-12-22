@@ -76,45 +76,42 @@ function handleFileRequest($filename, $default = []) {
         if (!$fp) jsonResponse(['error' => 'Could not open file'], 500);
         
         if (flock($fp, LOCK_EX)) {
-            // v1.7.2: Smart Merge for shops.json
-            if ($filename === 'shops.json') {
-                rewind($fp);
-                $oldContent = stream_get_contents($fp);
-                if (function_exists('mb_convert_encoding')) {
-                    $oldContent = mb_convert_encoding($oldContent, 'UTF-8', 'UTF-8,GBK,ISO-8859-1');
-                }
-                $oldData = json_decode($oldContent, true);
-                
-                if (is_array($oldData) && is_array($newData)) {
-                    // Extract existing locks
-                    $lockMap = [];
-                    foreach ($oldData as $oldAccount) {
-                        if (!isset($oldAccount['inventory']) || !is_array($oldAccount['inventory'])) continue;
-                        foreach ($oldAccount['inventory'] as $oldItem) {
-                            if (isset($oldItem['internalStatus']) && $oldItem['internalStatus'] === 'occupied') {
-                                $lockMap[(string)$oldItem['id']] = [
-                                    'internalStatus' => $oldItem['internalStatus'],
-                                    'lastMatchedTime' => isset($oldItem['lastMatchedTime']) ? $oldItem['lastMatchedTime'] : null
-                                ];
-                            }
+            rewind($fp);
+            $oldContent = stream_get_contents($fp);
+            if (function_exists('mb_convert_encoding')) {
+                $oldContent = mb_convert_encoding($oldContent, 'UTF-8', 'UTF-8,GBK,ISO-8859-1');
+            }
+            $oldData = json_decode($oldContent, true);
+
+            // v1.8.0: Smart Merge for ALL critical files
+            if ($filename === 'shops.json' && is_array($oldData) && is_array($newData)) {
+                // Preserve internalStatus
+                $lockMap = [];
+                foreach ($oldData as $oldAccount) {
+                    if (!isset($oldAccount['inventory']) || !is_array($oldAccount['inventory'])) continue;
+                    foreach ($oldAccount['inventory'] as $oldItem) {
+                        if (isset($oldItem['internalStatus']) && $oldItem['internalStatus'] === 'occupied') {
+                            $lockMap[(string)$oldItem['id']] = $oldItem;
                         }
                     }
-                    
-                    // Re-apply locks to new data
-                    foreach ($newData as &$newAccount) {
-                        if (!isset($newAccount['inventory']) || !is_array($newAccount['inventory'])) continue;
-                        foreach ($newAccount['inventory'] as &$newItem) {
-                            $id = (string)$newItem['id'];
-                            if (isset($lockMap[$id])) {
-                                $newItem['internalStatus'] = $lockMap[$id]['internalStatus'];
-                                if ($lockMap[$id]['lastMatchedTime']) {
-                                    $newItem['lastMatchedTime'] = $lockMap[$id]['lastMatchedTime'];
-                                }
-                            }
+                }
+                foreach ($newData as &$newAccount) {
+                    if (!isset($newAccount['inventory']) || !is_array($newAccount['inventory'])) continue;
+                    foreach ($newAccount['inventory'] as &$newItem) {
+                        $id = (string)$newItem['id'];
+                        if (isset($lockMap[$id])) {
+                            $newItem['internalStatus'] = $lockMap[$id]['internalStatus'];
+                            $newItem['lastMatchedTime'] = isset($lockMap[$id]['lastMatchedTime']) ? $lockMap[$id]['lastMatchedTime'] : null;
                         }
                     }
                 }
                 $input = json_encode($newData, JSON_UNESCAPED_UNICODE);
+            } else if ($filename === 'orders.json' && is_array($oldData) && is_array($newData)) {
+                // v1.8.0: Lossless Order Merge
+                $orderMap = [];
+                foreach ($oldData as $o) $orderMap[$o['id']] = $o;
+                foreach ($newData as $o) $orderMap[$o['id']] = $o; // New data overwrites old status if ID matches
+                $input = json_encode(array_values($orderMap), JSON_UNESCAPED_UNICODE);
             }
 
             ftruncate($fp, 0);
@@ -171,7 +168,78 @@ function atomicAppend($filename, $newItem) {
 }
 
 /**
- * Atomically locks an inventory item.
+ * Atomically finds and locks an inventory item.
+ */
+function matchAndLockItem($targetPrice, $matchedTime) {
+    global $baseDir;
+    $filePath = $baseDir . '/shops.json';
+    
+    if (!file_exists($filePath)) return "shops.json not found";
+    
+    $fp = fopen($filePath, 'c+b');
+    if (!$fp) return "Could not open shops.json";
+    
+    if (flock($fp, LOCK_EX)) {
+        rewind($fp);
+        $content = stream_get_contents($fp);
+        if (function_exists('mb_convert_encoding')) {
+            $content = mb_convert_encoding($content, 'UTF-8', 'UTF-8,GBK,ISO-8859-1');
+        }
+        $data = json_decode($content, true);
+        
+        if (!is_array($data)) {
+            flock($fp, LOCK_UN);
+            fclose($fp);
+            return "Inventory data invalid";
+        }
+        
+        $matchedAccount = null;
+        $matchedItem = null;
+        
+        foreach ($data as &$account) {
+            if (!isset($account['inventory']) || !is_array($account['inventory'])) continue;
+            foreach ($account['inventory'] as &$item) {
+                // Matching criteria
+                $price = (float)$item['price'];
+                $status = (string)$item['status'];
+                $internalStatus = isset($item['internalStatus']) ? $item['internalStatus'] : 'idle';
+                
+                $isStatusOk = (strpos($status, '售') !== false || $status === 'active' || strpos($status, 'sale') !== false || strpos($status, 'Normal') !== false) && 
+                               (strpos($status, '已售出') === false && strpos($status, 'Sold') === false);
+                               
+                if ($price == (float)$targetPrice && $isStatusOk && $internalStatus === 'idle') {
+                    $item['internalStatus'] = 'occupied';
+                    $item['lastMatchedTime'] = $matchedTime;
+                    $matchedItem = $item;
+                    $matchedAccount = $account; // Return context
+                    break 2;
+                }
+            }
+        }
+        
+        if ($matchedItem) {
+            ftruncate($fp, 0);
+            rewind($fp);
+            fwrite($fp, json_encode($data, JSON_UNESCAPED_UNICODE));
+            fflush($fp);
+            flock($fp, LOCK_UN);
+            fclose($fp);
+            return [
+                'item' => $matchedItem,
+                'account' => $matchedAccount
+            ];
+        }
+        
+        flock($fp, LOCK_UN);
+        fclose($fp);
+        return "No matching inventory found";
+    }
+    fclose($fp);
+    return "Lock error during matching";
+}
+
+/**
+ * Atomically locks an inventory item by ID.
  */
 function atomicLockItem($inventoryId, $matchedTime) {
     global $baseDir;
@@ -356,6 +424,17 @@ try {
                 jsonResponse(['success' => true]);
             } else {
                 jsonResponse(['error' => $res], 500);
+            }
+            break;
+        case 'match_and_lock':
+            if ($_SERVER['REQUEST_METHOD'] !== 'POST') jsonResponse(['error' => 'POST required'], 405);
+            $input = json_decode(file_get_contents('php://input'), true);
+            if (!$input || !isset($input['price'])) jsonResponse(['error' => 'Price required'], 400);
+            $res = matchAndLockItem($input['price'], isset($input['time']) ? $input['time'] : time()*1000);
+            if (is_array($res)) {
+                jsonResponse(['success' => true, 'data' => $res]);
+            } else {
+                jsonResponse(['error' => $res], 404);
             }
             break;
         case 'lock_inventory':

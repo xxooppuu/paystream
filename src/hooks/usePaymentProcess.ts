@@ -211,40 +211,8 @@ export const usePaymentProcess = () => {
                 addLog(`⚠️ 警告: 找到 ${freshInventory.length} 个商品但无可用 (状态不符或被占用)`);
             }
 
-            if (idleItems.length > 0) {
-                // Found!
-                const item = idleItems[Math.floor(Math.random() * idleItems.length)];
-
-                // v1.6.5: Atomic Lock via Backend
-                const lockRes = await fetch(getApiUrl('lock_inventory'), {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        id: item.id,
-                        time: Date.now()
-                    })
-                });
-
-                if (!lockRes.ok) {
-                    const errorData = await lockRes.json().catch(() => ({}));
-                    const errMsg = errorData.error || 'Lock failed';
-                    addLog(`❌ 锁定商品失败: ${errMsg}`);
-                    throw new Error(errMsg);
-                }
-
-                if (isQueueing) addLog('排队结束，匹配成功！');
-                return { item, freshAccounts };
-            }
-
-            // Not found, enter queue mode if not already
-            if (!isQueueing) {
-                isQueueing = true;
-                setStep(0.5); // Queue Step
-                addLog('当前订单过多，进入排队模式...');
-            }
-
             // Wait before retry
-            await delay(attempts < 3 ? 1000 : POLLING_INTERVAL_MS); // Faster retry at first
+            await delay(attempts < 3 ? 1000 : POLLING_INTERVAL_MS);
         }
 
         setQueueEndTime(null);
