@@ -169,8 +169,9 @@ function atomicAppend($filename, $newItem) {
 
 /**
  * Atomically finds and locks an inventory item.
+ * v1.8.0 Hardened: Accepts filter criteria
  */
-function matchAndLockItem($targetPrice, $matchedTime) {
+function matchAndLockItem($targetPrice, $matchedTime, $filters = []) {
     global $baseDir;
     $filePath = $baseDir . '/shops.json';
     
@@ -196,9 +197,21 @@ function matchAndLockItem($targetPrice, $matchedTime) {
         $matchedAccount = null;
         $matchedItem = null;
         
+        // Extract filters
+        $specificShopId = isset($filters['specificShopId']) ? (string)$filters['specificShopId'] : null;
+        $excludeIds = isset($filters['excludeIds']) ? (array)$filters['excludeIds'] : [];
+        $validityDuration = isset($filters['validityDuration']) ? (int)$filters['validityDuration'] : 180;
+        $validityMs = $validityDuration * 1000;
+
         foreach ($data as &$account) {
+            // Filter by Specific Shop
+            if ($specificShopId && (string)$account['id'] !== $specificShopId) continue;
+
             if (!isset($account['inventory']) || !is_array($account['inventory'])) continue;
             foreach ($account['inventory'] as &$item) {
+                $id = (string)$item['id'];
+                if (in_array($id, $excludeIds)) continue;
+
                 // Matching criteria
                 $price = (float)$item['price'];
                 $status = (string)$item['status'];
@@ -207,11 +220,16 @@ function matchAndLockItem($targetPrice, $matchedTime) {
                 $isStatusOk = (strpos($status, '售') !== false || $status === 'active' || strpos($status, 'sale') !== false || strpos($status, 'Normal') !== false) && 
                                (strpos($status, '已售出') === false && strpos($status, 'Sold') === false);
                                
-                if ($price == (float)$targetPrice && $isStatusOk && $internalStatus === 'idle') {
+                // Expiry Check (Safety: use server time)
+                $isOccupied = ($internalStatus === 'occupied');
+                $lastTime = isset($item['lastMatchedTime']) ? (float)$item['lastMatchedTime'] : 0;
+                $isExpired = $isOccupied && ($lastTime > 0) && ((time() * 1000) - $lastTime > $validityMs);
+
+                if ($price == (float)$targetPrice && $isStatusOk && ($internalStatus === 'idle' || $isExpired)) {
                     $item['internalStatus'] = 'occupied';
                     $item['lastMatchedTime'] = $matchedTime;
                     $matchedItem = $item;
-                    $matchedAccount = $account; // Return context
+                    $matchedAccount = $account;
                     break 2;
                 }
             }
@@ -430,7 +448,10 @@ try {
             if ($_SERVER['REQUEST_METHOD'] !== 'POST') jsonResponse(['error' => 'POST required'], 405);
             $input = json_decode(file_get_contents('php://input'), true);
             if (!$input || !isset($input['price'])) jsonResponse(['error' => 'Price required'], 400);
-            $res = matchAndLockItem($input['price'], isset($input['time']) ? $input['time'] : time()*1000);
+            
+            $filters = isset($input['filters']) ? (array)$input['filters'] : [];
+            $res = matchAndLockItem($input['price'], isset($input['time']) ? $input['time'] : time()*1000, $filters);
+            
             if (is_array($res)) {
                 jsonResponse(['success' => true, 'data' => $res]);
             } else {

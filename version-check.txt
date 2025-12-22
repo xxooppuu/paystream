@@ -1,9 +1,8 @@
-PayStream v1.8.0 - ARCHITECTURAL HARDENING
-Status: SERVER-SIDE ATOMIC MATCHING
-Key Features:
-- New match_and_lock endpoint (Atomic pick & lock)
-- No-Loss Merge for orders.json (Deduplicates instead of overwrites)
-- Persistent internalStatus shielded from UI refreshes
-- Eliminated Frontend-Backend Race Condition window
-Build Timestamp: 2025-12-23 07:35
-Final Production Audit: STRONGLY RECOMMENDED
+PayStream v1.8.1 - ATOMIC FIX & CACHE BUST
+Status: FORCED REBUILD
+Fixes:
+- Optimized Server-Side Matching Time Comparison
+- Forced cache busting via v1.8.1 assets
+- Cleanup of stale build artifacts
+Build Timestamp: 2025-12-23 07:44
+Summary: Guaranteed to run v1.8.1 logic now.
