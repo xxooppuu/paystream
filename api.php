@@ -46,7 +46,7 @@ function handleFileRequest($filename, $default = []) {
         $fp = fopen($filePath, 'rb');
         if (!$fp) jsonResponse($default);
         
-        flock($fp, LOCK_SH); // Shared lock for reading
+        flock($fp, LOCK_SH);
         $content = stream_get_contents($fp);
         flock($fp, LOCK_UN);
         fclose($fp);
@@ -60,12 +60,11 @@ function handleFileRequest($filename, $default = []) {
             jsonResponse(['error' => 'Invalid JSON'], 400);
         }
         
-        // Atomic Write with Exclusive Lock
-        $fp = fopen($filePath, 'cb'); // Open for reading/writing; place pointer at beginning
+        $fp = fopen($filePath, 'cb');
         if (!$fp) jsonResponse(['error' => 'Could not open file'], 500);
         
         if (flock($fp, LOCK_EX)) {
-            ftruncate($fp, 0); // Clear file
+            ftruncate($fp, 0);
             fwrite($fp, $input);
             fflush($fp);
             flock($fp, LOCK_UN);
@@ -85,12 +84,18 @@ function atomicAppend($filename, $newItem) {
     global $baseDir;
     $filePath = $baseDir . '/' . $filename;
     
-    $fp = fopen($filePath, 'c+b'); // Read/Write, create if not exist
+    $fp = fopen($filePath, 'c+b');
     if (!$fp) return false;
     
     if (flock($fp, LOCK_EX)) {
+        rewind($fp);
         $content = stream_get_contents($fp);
         $data = json_decode($content, true);
+        if ($data === null && json_last_error() !== JSON_ERROR_NONE) {
+            $content = mb_convert_encoding($content, 'UTF-8', 'UTF-8,GBK,ISO-8859-1');
+            $data = json_decode($content, true);
+        }
+        
         if (!is_array($data)) $data = [];
         
         $data[] = $newItem;
@@ -118,17 +123,31 @@ function atomicLockItem($inventoryId, $matchedTime) {
     if (!$fp) return false;
     
     if (flock($fp, LOCK_EX)) {
+        rewind($fp);
         $content = stream_get_contents($fp);
-        $accounts = json_decode($content, true);
-        if (!is_array($accounts)) $accounts = [];
+        
+        // v1.6.5.2: Safe Decode - Browser might have sent non-UTF8 or broken chars
+        $data = json_decode($content, true);
+        if ($data === null && json_last_error() !== JSON_ERROR_NONE) {
+            // Attempt to fix encoding if broken
+            $content = mb_convert_encoding($content, 'UTF-8', 'UTF-8,GBK,ISO-8859-1');
+            $data = json_decode($content, true);
+        }
+        
+        if (!is_array($data)) {
+            flock($fp, LOCK_UN);
+            fclose($fp);
+            return false; // Don't wipe data if it's not an array
+        }
         
         $found = false;
-        foreach ($accounts as &$account) {
+        foreach ($data as &$account) {
             if (!isset($account['inventory']) || !is_array($account['inventory'])) continue;
             foreach ($account['inventory'] as &$item) {
+                // Precise string comparison for safety
                 if ((string)$item['id'] === (string)$inventoryId) {
                     $item['internalStatus'] = 'occupied';
-                    $item['lastMatchedTime'] = (int)$matchedTime;
+                    $item['lastMatchedTime'] = $matchedTime; // Keep original type (might be float/string)
                     $found = true;
                     break 2;
                 }
@@ -138,7 +157,7 @@ function atomicLockItem($inventoryId, $matchedTime) {
         if ($found) {
             ftruncate($fp, 0);
             rewind($fp);
-            fwrite($fp, json_encode($accounts, JSON_UNESCAPED_UNICODE));
+            fwrite($fp, json_encode($data, JSON_UNESCAPED_UNICODE));
             fflush($fp);
         }
         
