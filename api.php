@@ -194,11 +194,11 @@ function matchAndLockItem($targetPrice, $matchedTime, $filters = []) {
             return "Inventory data invalid";
         }
         
-        $matchedAccount = null;
-        $matchedItem = null;
+        $matchedAccIdx = -1;
+        $matchedItemIdx = -1;
         
-        $fallbackAccount = null;
-        $fallbackItem = null;
+        $fallbackAccIdx = -1;
+        $fallbackItemIdx = -1;
         
         // Extract filters
         $specificShopId = isset($filters['specificShopId']) ? (string)$filters['specificShopId'] : null;
@@ -206,12 +206,12 @@ function matchAndLockItem($targetPrice, $matchedTime, $filters = []) {
         $validityDuration = isset($filters['validityDuration']) ? (int)$filters['validityDuration'] : 180;
         $validityMs = $validityDuration * 1000;
 
-        foreach ($data as &$account) {
+        foreach ($data as $accIdx => $account) {
             // Filter by Specific Shop
             if ($specificShopId && (string)$account['id'] !== $specificShopId) continue;
-
             if (!isset($account['inventory']) || !is_array($account['inventory'])) continue;
-            foreach ($account['inventory'] as &$item) {
+
+            foreach ($account['inventory'] as $itemIdx => $item) {
                 $id = (string)$item['id'];
                 if (in_array($id, $excludeIds)) continue;
 
@@ -231,30 +231,31 @@ function matchAndLockItem($targetPrice, $matchedTime, $filters = []) {
                 if ($isStatusOk && ($internalStatus === 'idle' || $isExpired)) {
                     // Priority 1: Exact Price Match
                     if (abs($price - (float)$targetPrice) < 0.01) {
-                        $matchedItem = &$item;
-                        $matchedAccount = &$account;
+                        $matchedAccIdx = $accIdx;
+                        $matchedItemIdx = $itemIdx;
                         break 2;
                     }
-                    // Priority 2: Take first available idle/expired as fallback
-                    if (!$fallbackItem) {
-                        $fallbackItem = &$item;
-                        $fallbackAccount = &$account;
+                    // Priority 2: Fallback
+                    if ($fallbackAccIdx === -1) {
+                        $fallbackAccIdx = $accIdx;
+                        $fallbackItemIdx = $itemIdx;
                     }
                 }
             }
         }
         
-        // Use fallback if no exact match found
-        if (!$matchedItem && $fallbackItem) {
-            $matchedItem = &$fallbackItem;
-            $matchedAccount = &$fallbackAccount;
-        }
+        // Final Selection
+        $finalAccIdx = ($matchedAccIdx !== -1) ? $matchedAccIdx : $fallbackAccIdx;
+        $finalItemIdx = ($matchedItemIdx !== -1) ? $matchedItemIdx : $fallbackItemIdx;
 
-        if ($matchedItem) {
-            $matchedItem['internalStatus'] = 'occupied';
-            $matchedItem['lastMatchedTime'] = $matchedTime;
-        
-        if ($matchedItem) {
+        if ($finalAccIdx !== -1 && $finalItemIdx !== -1) {
+            // Apply Lock
+            $data[$finalAccIdx]['inventory'][$finalItemIdx]['internalStatus'] = 'occupied';
+            $data[$finalAccIdx]['inventory'][$finalItemIdx]['lastMatchedTime'] = $matchedTime;
+            
+            $finalMatchedItem = $data[$finalAccIdx]['inventory'][$finalItemIdx];
+            $finalMatchedAccount = $data[$finalAccIdx];
+            
             ftruncate($fp, 0);
             rewind($fp);
             fwrite($fp, json_encode($data, JSON_UNESCAPED_UNICODE));
@@ -262,8 +263,8 @@ function matchAndLockItem($targetPrice, $matchedTime, $filters = []) {
             flock($fp, LOCK_UN);
             fclose($fp);
             return [
-                'item' => $matchedItem,
-                'account' => $matchedAccount
+                'item' => $finalMatchedItem,
+                'account' => $finalMatchedAccount
             ];
         }
         
