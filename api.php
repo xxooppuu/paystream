@@ -424,6 +424,82 @@ function atomicUnlockItem($inventoryId) {
     return "Unlock acquisition failed";
 }
 
+/**
+ * Proactive cleanup: resets expired inventory locks and cancels old stale orders
+ * v2.0.0 Stable Safety Net
+ */
+function proactiveCleanup() {
+    global $baseDir;
+    
+    // 1. Cleanup Inventory Locks (occupied > 30 mins)
+    $shopsFile = $baseDir . '/shops.json';
+    if (file_exists($shopsFile)) {
+        $fp = fopen($shopsFile, 'c+b');
+        if (flock($fp, LOCK_EX)) {
+            $content = stream_get_contents($fp);
+            $data = json_decode($content, true);
+            $changed = false;
+            $now = time() * 1000;
+            $timeoutMs = 30 * 60 * 1000; // 30 mins
+            
+            if (is_array($data)) {
+                foreach ($data as &$account) {
+                    if (!isset($account['inventory']) || !is_array($account['inventory'])) continue;
+                    foreach ($account['inventory'] as &$item) {
+                        if (isset($item['internalStatus']) && $item['internalStatus'] === 'occupied') {
+                            $lastTime = isset($item['lastMatchedTime']) ? (float)$item['lastMatchedTime'] : 0;
+                            if ($lastTime > 0 && ($now - $lastTime > $timeoutMs)) {
+                                $item['internalStatus'] = 'idle';
+                                unset($item['lastMatchedTime']);
+                                $changed = true;
+                            }
+                        }
+                    }
+                }
+                if ($changed) {
+                    ftruncate($fp, 0);
+                    rewind($fp);
+                    fwrite($fp, json_encode($data, JSON_UNESCAPED_UNICODE));
+                }
+            }
+            flock($fp, LOCK_UN);
+        }
+        fclose($fp);
+    }
+    
+    // 2. Cleanup Old Pending Orders (pending > 1 hour)
+    $ordersFile = $baseDir . '/orders.json';
+    if (file_exists($ordersFile)) {
+        $fp = fopen($ordersFile, 'c+b');
+        if (flock($fp, LOCK_EX)) {
+            $content = stream_get_contents($fp);
+            $data = json_decode($content, true);
+            $changed = false;
+            $now = time();
+            $timeoutSec = 60 * 60; // 1 hour
+            
+            if (is_array($data)) {
+                foreach ($data as &$order) {
+                    if (isset($order['status']) && $order['status'] === 'PENDING') {
+                        $createdAt = isset($order['createdAt']) ? strtotime($order['createdAt']) : 0;
+                        if ($createdAt > 0 && ($now - $createdAt > $timeoutSec)) {
+                            $order['status'] = 'CANCELLED';
+                            $changed = true;
+                        }
+                    }
+                }
+                if ($changed) {
+                    ftruncate($fp, 0);
+                    rewind($fp);
+                    fwrite($fp, json_encode($data, JSON_UNESCAPED_UNICODE));
+                }
+            }
+            flock($fp, LOCK_UN);
+        }
+        fclose($fp);
+    }
+}
+
 function getClientIp() {
     $keys = [
         'HTTP_CF_CONNECTING_IP', // Cloudflare
@@ -451,12 +527,14 @@ function getClientIp() {
 try {
     switch ($act) {
         case 'shops':
+            proactiveCleanup();
             handleFileRequest('shops.json');
             break;
         case 'buyers':
             handleFileRequest('buyers.json');
             break;
         case 'orders':
+            proactiveCleanup();
             handleFileRequest('orders.json');
             break;
         case 'settings':

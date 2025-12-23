@@ -342,10 +342,57 @@ export const usePaymentProcess = () => {
             addLog(`下单成功! 订单号: ${newOrder.orderNo}`);
             setStep(5);
 
-            // Wait a bit before marking full success if onComplete is needed
-            setTimeout(() => {
+            // v2.0.0: Real-time Status Polling (instead of fake 2s delay)
+            addLog('正在等待支付结果...');
+            const pollStartTime = Date.now();
+            const POLL_TIMEOUT = (settings?.validityDuration ? Number(settings.validityDuration) : 180) * 1000;
+
+            let isPaid = false;
+            while (Date.now() - pollStartTime < POLL_TIMEOUT) {
+                await delay(4000); // Poll every 4s
+
+                try {
+                    const statusRes = await fetch(getApiUrl('proxy'), {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            targetUrl: `https://app.zhuanzhuan.com/zz/transfer/getOrder?mversion=3&orderId=${newOrder.orderNo}&abGroup=2`,
+                            method: 'GET',
+                            cookie: buyer.cookie,
+                            headers: { 'Referer': 'https://m.zhuanzhuan.com/' }
+                        })
+                    });
+
+                    if (statusRes.ok) {
+                        const sData = await statusRes.json();
+                        if (sData.respCode === '0') {
+                            const statusStr = sData.respData?.status;
+                            const statusInfo = sData.respData?.statusInfo;
+
+                            // Code 3 is usually Paid/Success
+                            if (statusStr === '3' || statusInfo?.includes('待发货') || statusInfo?.includes('已支付')) {
+                                addLog('🎉 检测到支付成功！');
+                                isPaid = true;
+                                break;
+                            } else if (statusStr === '19' || statusInfo?.includes('已取消')) {
+                                throw new Error('订单已在外部系统取消');
+                            }
+                        }
+                    }
+                } catch (pollErr) {
+                    console.warn('Polling error:', pollErr);
+                }
+            }
+
+            if (isPaid) {
                 setStep(6);
-            }, 2000);
+                // Update local order status if we have it
+                setOrder(prev => prev ? { ...prev, status: OrderStatus.SUCCESS } : null);
+            } else {
+                addLog('⏳ 支付超时或未检测到结果');
+                setStep(7); // Expired/Timeout state
+                if (currentMatchedItem) releaseInventory(currentMatchedItem.id);
+            }
 
             return newOrder;
 

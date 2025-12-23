@@ -115,7 +115,7 @@ const App: React.FC = () => {
           targetUrl: 'https://app.zhuanzhuan.com/zz/transfer/cancelOrder',
           method: 'POST',
           cookie: buyer.cookie,
-          body: `cancelReason=不想要了&subCancelReason=&orderId=${order.id}`,
+          body: `cancelReason=不想要了&subCancelReason=&orderId=${order.orderNo}`,
           headers: {
             'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8',
             'Referer': 'https://m.zhuanzhuan.com/'
@@ -127,15 +127,15 @@ const App: React.FC = () => {
 
       // Check success code (respCode: "0")
       if (apiRes.respCode === '0' || apiRes.respData?.statusInfo === '已取消') {
-        console.log(`API Cancelled Order ${order.id} Successfully`);
+        console.log(`API Cancelled Order ${order.orderNo} Successfully`);
         return true;
       } else {
-        console.error(`API Cancel Failed for ${order.id}:`, apiRes);
+        console.error(`API Cancel Failed for ${order.orderNo}:`, apiRes);
         // If already cancelled or invalid, we might still want to mark local as cancelled if it looks terminal
         return false;
       }
     } catch (e) {
-      console.error(`Exception cancelling order ${order.id}`, e);
+      console.error(`Exception cancelling order ${order.orderNo}`, e);
       return false;
     }
   };
@@ -302,7 +302,7 @@ const App: React.FC = () => {
 
       // 2. Call GetOrder API
       // https://app.zhuanzhuan.com/zz/transfer/getOrder?mversion=3&orderId=...&abGroup=2
-      const targetUrl = `https://app.zhuanzhuan.com/zz/transfer/getOrder?mversion=3&orderId=${order.id}&abGroup=2`;
+      const targetUrl = `https://app.zhuanzhuan.com/zz/transfer/getOrder?mversion=3&orderId=${order.orderNo}&abGroup=2`;
 
       const proxyRes = await fetch(PROXY_URL, {
         method: 'POST',
@@ -400,63 +400,32 @@ const App: React.FC = () => {
     checkBackend();
   }, []);
 
-  // NEW: Auto-Poll Status for Pending Orders (Every 5s)
+  // v2.0.0: Consolidated Auto-Poll Status for Pending Orders (Every 8s)
   useEffect(() => {
-    if (!orders || orders.length === 0) return;
+    if (!orders || orders.length === 0 || currentView !== 'orders') return;
 
     const interval = setInterval(() => {
-      // Filter orders: PENDING and created within last 10 mins (600000ms)
-      const now = Date.now();
-      const tenMinsAgo = now - 10 * 60 * 1000;
+      // Filter orders: PENDING and created within last 30 mins
+      const now = Date.now() + clockDrift;
+      const thirtyMinsAgo = now - 30 * 60 * 1000;
 
       const activePendingOrders = orders.filter(o => {
         if (o.status !== OrderStatus.PENDING) return false;
         const createdTime = new Date(o.createdAt).getTime();
-        return createdTime > tenMinsAgo;
+        return createdTime > thirtyMinsAgo;
       });
 
       if (activePendingOrders.length > 0) {
         console.log(`Auto-polling ${activePendingOrders.length} pending orders...`);
-        // Check each one silently (no alert on success)
+        // Check each one silently
         activePendingOrders.forEach(o => {
           handleCheckOrderStatus(o, true);
         });
       }
-    }, 5000); // Check every 5s
+    }, 8000); // 8s for efficiency
 
     return () => clearInterval(interval);
-  }, [orders]);
-
-  // NEW: Auto-Poll Status for Pending Orders (Every 5s)
-  useEffect(() => {
-    if (!orders || orders.length === 0) return;
-
-    const interval = setInterval(() => {
-      // Filter orders: PENDING and created within last 10 mins (600000ms)
-      const now = Date.now();
-      const tenMinsAgo = now - 10 * 60 * 1000;
-
-      const activePendingOrders = orders.filter(o => {
-        if (o.status !== OrderStatus.PENDING) return false;
-        const createdTime = new Date(o.createdAt).getTime();
-        return createdTime > tenMinsAgo;
-      });
-
-      if (activePendingOrders.length > 0) {
-        console.log(`Auto-polling ${activePendingOrders.length} pending orders...`);
-        // Check each one silently (no alert on success)
-        activePendingOrders.forEach(o => {
-          // Need a silent version of handleCheckOrderStatus
-          // For now, let's reuse handleCheckOrderStatus but we need to modify it to suppress alerts if auto-called?
-          // Or extract the logic. 
-          // Better: update handleCheckOrderStatus to accept a 'silent' flag.
-          handleCheckOrderStatus(o, true);
-        });
-      }
-    }, 5000); // Check every 5s
-
-    return () => clearInterval(interval);
-  }, [orders]);
+  }, [orders, currentView, clockDrift]);
 
   const handleLogout = () => {
     setIsLoggedIn(false);
@@ -597,7 +566,7 @@ const App: React.FC = () => {
           </div>
           {/* Version Footer */}
           <div className="fixed bottom-4 right-4 text-xs text-slate-400 bg-white px-3 py-1 rounded-full shadow-sm border border-slate-200">
-            Admin v1.9.4 (Dynamic Address Fix)
+            Admin v2.0.0 (Stable Logic Fix)
           </div>
         </main>
       </div>
