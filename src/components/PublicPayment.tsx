@@ -40,7 +40,7 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
     }, []);
 
     // Logic from the hook
-    const { startPayment, cancelCurrentOrder, loading, logs, step, error, paymentLink, orderCreatedAt, queueEndTime, settings } = usePaymentProcess();
+    const { startPayment, cancelCurrentOrder, loading, logs, step, error, paymentLink, orderCreatedAt, queueEndTime, settings, internalOrderId, queuePosition } = usePaymentProcess();
 
     useEffect(() => {
         // Fetch specific config
@@ -121,7 +121,7 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
         }
 
         try {
-            const res = await fetch(getApiUrl('ip_logs'));
+            const res = await fetch(getApiUrl('ip_logs') + `&_t=${Date.now()}`);
             const allLogs = res.ok ? await res.json() : [];
             const pageLogs = Array.isArray(allLogs) ? allLogs.filter((l: any) => l.ip === visitorIp && l.pageId === pageId) : [];
 
@@ -381,9 +381,10 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
                                             <h3 className="text-xl font-bold text-slate-800">当前订单过多，排队中...</h3>
                                             <div className="bg-amber-50 text-amber-800 px-4 py-3 rounded-xl border border-amber-100 max-w-xs mx-auto">
                                                 <p className="text-sm">系统正在努力匹配空闲商品</p>
-                                                <p className="text-xs mt-1 text-amber-600">预计等待时间: {queueTimeLeft !== null ? `${queueTimeLeft}秒` : '计算中...'}</p>
+                                                {internalOrderId && <p className="text-[10px] font-mono mt-1 opacity-60">单号: {internalOrderId}</p>}
+                                                <p className="text-xs mt-2 text-amber-600 font-bold">目前排位: 第 {queuePosition || '?'} 位</p>
                                             </div>
-                                            <div className="w-full bg-slate-100 rounded-full h-2 mt-4 overflow-hidden">
+                                            <div className="w-full bg-slate-100 rounded-full h-2 mt-4 overflow-hidden px-12">
                                                 <div className="bg-amber-500 h-full rounded-full animate-progress-indeterminate"></div>
                                             </div>
                                             <p className="text-xs text-slate-400">一旦有空闲将自动为您匹配</p>
@@ -470,7 +471,7 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
                     })()}
 
                     <div className="absolute bottom-4 left-0 right-0 text-center text-[10px] text-slate-300 pointer-events-none space-y-1">
-                        <div>PayStream v2.1.6 (FIFO-Sync: {new Date().toLocaleTimeString()})</div>
+                        <div>PayStream v2.1.7 (Internal-ID Lock: {new Date().toLocaleTimeString()})</div>
                         {visitorIp && (
                             <div className="opacity-50">
                                 IP: {visitorIp} {ipUsage ? ` / ${ipUsage}` : ''} / SYNC: {Math.abs(clockDrift) > 1000 ? 'ADJ' : 'OK'}

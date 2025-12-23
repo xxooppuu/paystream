@@ -66,6 +66,7 @@ export const OrderCenter: React.FC<OrderCenterProps> = ({ orders, onCancelOrder,
             case OrderStatus.FAILED: return 'bg-red-100 text-red-700 border-red-200';
             case OrderStatus.REFUNDED: return 'bg-slate-100 text-slate-700 border-slate-200';
             case OrderStatus.CANCELLED: return 'bg-gray-100 text-gray-500 border-gray-200';
+            case OrderStatus.QUEUEING: return 'bg-blue-100 text-blue-700 border-blue-200 animate-pulse';
             default: return 'bg-gray-100 text-gray-700';
         }
     };
@@ -121,6 +122,7 @@ export const OrderCenter: React.FC<OrderCenterProps> = ({ orders, onCancelOrder,
                             <option value={OrderStatus.PENDING}>未支付</option>
                             <option value={OrderStatus.CANCELLED}>已取消</option>
                             <option value={OrderStatus.REFUNDED}>已退款</option>
+                            <option value={OrderStatus.QUEUEING}>排队中</option>
                         </select>
                     </div>
 
@@ -180,7 +182,8 @@ export const OrderCenter: React.FC<OrderCenterProps> = ({ orders, onCancelOrder,
                                                 {order.status === OrderStatus.SUCCESS ? '已支付' :
                                                     order.status === OrderStatus.PENDING ? '未支付' :
                                                         order.status === OrderStatus.CANCELLED ? '已取消' :
-                                                            order.status === OrderStatus.REFUNDED ? '已退款' : order.status}
+                                                            order.status === OrderStatus.REFUNDED ? '已退款' :
+                                                                order.status === OrderStatus.QUEUEING ? '排队中' : order.status}
                                             </span>
                                         </td>
                                         <td className="p-4 text-sm text-slate-500">

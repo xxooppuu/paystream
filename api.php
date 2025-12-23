@@ -328,120 +328,130 @@ function atomicAddIpLog($ip, $pageId) {
  * Atomically finds and locks an inventory item.
  * v1.8.0 Hardened: Accepts filter criteria
  */
-function matchAndLockItem($targetPrice, $matchedTime, $filters = []) {
+/**
+ * v2.1.7: Atomically finds and locks an inventory item based on FIFO position in orders.json.
+ * Supports Top-N matching where N is the number of available items.
+ */
+function matchAndLockItem($targetPrice, $internalOrderId, $filters = []) {
     global $baseDir;
-    $filePath = $baseDir . '/shops.json';
+    $shopsFile = $baseDir . '/shops.json';
+    $ordersFile = $baseDir . '/orders.json';
     
-    // v2.1.6: FIFO Queue Check via ClientID
-    $clientId = isset($filters['clientId']) ? (string)$filters['clientId'] : getClientIp();
-    $isFirst = registerAndCheckPriority($targetPrice, $clientId);
-    if (!$isFirst) {
-        return "您正在排队等待中，请稍后... (排队顺序受保护)";
-    }
+    if (!file_exists($shopsFile)) return "shops.json not found";
+    if (!file_exists($ordersFile)) return "orders.json not found";
 
-    if (!file_exists($filePath)) return "shops.json not found";
+    // 1. Lock BOTH files to ensure absolute consistency
+    $sfp = fopen($shopsFile, 'c+b');
+    $ofp = fopen($ordersFile, 'c+b');
     
-    $fp = fopen($filePath, 'c+b');
-    if (!$fp) return "Could not open shops.json";
-    
-    if (flock($fp, LOCK_EX)) {
-        rewind($fp);
-        $content = stream_get_contents($fp);
-        if (function_exists('mb_convert_encoding')) {
-            $content = mb_convert_encoding($content, 'UTF-8', 'UTF-8,GBK,ISO-8859-1');
-        }
-        $data = json_decode($content, true);
+    if (flock($sfp, LOCK_EX) && flock($ofp, LOCK_EX)) {
+        $sContent = stream_get_contents($sfp);
+        $oContent = stream_get_contents($ofp);
         
-        // v2.1.2: Standardize on Server Time (IGNORE CLIENT TIME)
+        $shops = json_decode($sContent, true);
+        $orders = json_decode($oContent, true);
+        
+        if (!is_array($shops) || !is_array($orders)) {
+            flock($ofp, LOCK_UN); flock($sfp, LOCK_UN);
+            fclose($ofp); fclose($sfp);
+            return "Data structure invalid";
+        }
+
         $now = time() * 1000;
-        $matchedTime = $now; 
-        
-        if (!is_array($data)) {
-            flock($fp, LOCK_UN);
-            fclose($fp);
-            return "Inventory data invalid";
-        }
-        
-        $matchedAccIdx = -1;
-        $matchedItemIdx = -1;
-        
-        $fallbackAccIdx = -1;
-        $fallbackItemIdx = -1;
-        
-        // Extract filters
-        $specificShopId = isset($filters['specificShopId']) ? (string)$filters['specificShopId'] : null;
-        $excludeIds = isset($filters['excludeIds']) ? (array)$filters['excludeIds'] : [];
+        $price = (float)$targetPrice;
+
+        // 2. Count Available Items
+        $availableItems = [];
         $validityDuration = isset($filters['validityDuration']) ? (int)$filters['validityDuration'] : 180;
         $validityMs = $validityDuration * 1000;
+        $specificShopId = isset($filters['specificShopId']) ? (string)$filters['specificShopId'] : null;
 
-        foreach ($data as $accIdx => $account) {
-            // Filter by Specific Shop
+        foreach ($shops as $accIdx => $account) {
             if ($specificShopId && (string)$account['id'] !== $specificShopId) continue;
-            if (!isset($account['inventory']) || !is_array($account['inventory'])) continue;
-
+            if (!isset($account['inventory'])) continue;
             foreach ($account['inventory'] as $itemIdx => $item) {
-                $id = (string)$item['id'];
-                if (in_array($id, $excludeIds)) continue;
-
-                // Matching criteria
-                $price = (float)$item['price'];
-                $status = (string)$item['status'];
-                $internalStatus = isset($item['internalStatus']) ? $item['internalStatus'] : 'idle';
+                if (abs((float)$item['price'] - $price) > 0.01) continue;
                 
-                $isStatusOk = (strpos($status, '售') !== false || $status === 'active' || strpos($status, 'sale') !== false || strpos($status, 'Normal') !== false) && 
-                               (strpos($status, '已售出') === false && strpos($status, 'Sold') === false);
-                               
-                // Expiry Check (v2.1.2: Strictly use server time)
-                $isOccupied = ($internalStatus === 'occupied');
+                $internalStatus = isset($item['internalStatus']) ? $item['internalStatus'] : 'idle';
                 $lastTime = isset($item['lastMatchedTime']) ? (float)$item['lastMatchedTime'] : 0;
-                $isExpired = $isOccupied && ($lastTime > 0) && ($now - $lastTime > $validityMs);
-
-                if ($isStatusOk && ($internalStatus === 'idle' || $isExpired)) {
-                    // Priority 1: Exact Price Match
-                    if (abs($price - (float)$targetPrice) < 0.01) {
-                        $matchedAccIdx = $accIdx;
-                        $matchedItemIdx = $itemIdx;
-                        break 2;
-                    }
-                    // Priority 2: Fallback
-                    if ($fallbackAccIdx === -1) {
-                        $fallbackAccIdx = $accIdx;
-                        $fallbackItemIdx = $itemIdx;
-                    }
+                $isExpired = ($internalStatus === 'occupied') && ($now - $lastTime > $validityMs);
+                
+                if ($internalStatus === 'idle' || $isExpired) {
+                    $availableItems[] = ['accIdx' => $accIdx, 'itemIdx' => $itemIdx, 'item' => $item];
                 }
             }
         }
-        
-        // Final Selection
-        $finalAccIdx = ($matchedAccIdx !== -1) ? $matchedAccIdx : $fallbackAccIdx;
-        $finalItemIdx = ($matchedItemIdx !== -1) ? $matchedItemIdx : $fallbackItemIdx;
+        $N = count($availableItems);
 
-        if ($finalAccIdx !== -1 && $finalItemIdx !== -1) {
-            // Apply Lock with unique Lock Ticket for v2.1.4
-            $lockTicket = uniqid('LT_', true);
-            $data[$finalAccIdx]['inventory'][$finalItemIdx]['internalStatus'] = 'occupied';
-            $data[$finalAccIdx]['inventory'][$finalItemIdx]['lastMatchedTime'] = $matchedTime;
-            $data[$finalAccIdx]['inventory'][$finalItemIdx]['lockTicket'] = $lockTicket;
-            
-            $finalMatchedItem = $data[$finalAccIdx]['inventory'][$finalItemIdx];
-            $finalMatchedAccount = $data[$finalAccIdx];
-            
-            ftruncate($fp, 0);
-            rewind($fp);
-            fwrite($fp, json_encode($data, JSON_UNESCAPED_UNICODE));
-            fflush($fp);
-            flock($fp, LOCK_UN);
-            fclose($fp);
-            
-            // v2.1.6: Successfully locked, remove from queue using clientId
-            unregisterWaiter($targetPrice, $clientId);
-            
-            return [
-                'item' => $finalMatchedItem,
-                'account' => $finalMatchedAccount,
-                'lockTicket' => $lockTicket
-            ];
+        // 3. Check Queue Position in orders.json (status=queueing)
+        $queue = [];
+        foreach ($orders as $o) {
+            if (isset($o['status']) && (strtolower($o['status']) === 'queueing') && abs((float)$o['amount'] - $price) < 0.01) {
+                $queue[] = $o['id'];
+            }
         }
+        
+        $pos = array_search($internalOrderId, $queue);
+        if ($pos === false) {
+            // If not in queueing list, user must create the pre-order first
+            flock($ofp, LOCK_UN); flock($sfp, LOCK_UN);
+            fclose($ofp); fclose($sfp);
+            return "请先创建排队订单 (ID: $internalOrderId)";
+        }
+
+        if ($pos >= $N) {
+            flock($ofp, LOCK_UN); flock($sfp, LOCK_UN);
+            fclose($ofp); fclose($sfp);
+            return "排队中，前方有 " . ($pos) . " 位，可用商品 " . $N . " 件";
+        }
+
+        // 4. Perform Matching (We are in Top-N)
+        $match = $availableItems[0]; // Just take the first available one (or $availableItems[$pos] if we want stickiness)
+        $finalAccIdx = $match['accIdx'];
+        $finalItemIdx = $match['itemIdx'];
+        
+        $lockTicket = uniqid('LT_', true);
+        $shops[$finalAccIdx]['inventory'][$finalItemIdx]['internalStatus'] = 'occupied';
+        $shops[$finalAccIdx]['inventory'][$finalItemIdx]['lastMatchedTime'] = $now;
+        $shops[$finalAccIdx]['inventory'][$finalItemIdx]['lockTicket'] = $lockTicket;
+        
+        $finalMatchedItem = $shops[$finalAccIdx]['inventory'][$finalItemIdx];
+        $finalMatchedAccount = $shops[$finalAccIdx];
+
+        // 5. Update Status in orders.json from queueing to pending
+        $orderUpdated = false;
+        foreach ($orders as &$o) {
+            if ($o['id'] === $internalOrderId) {
+                $o['status'] = 'pending';
+                $o['inventoryId'] = $finalMatchedItem['id'];
+                $o['accountId'] = $finalMatchedAccount['id'];
+                $o['lockTicket'] = $lockTicket;
+                $orderUpdated = true;
+                break;
+            }
+        }
+
+        // 6. Save BOTH
+        ftruncate($sfp, 0); rewind($sfp);
+        fwrite($sfp, json_encode($shops, JSON_UNESCAPED_UNICODE));
+        ftruncate($ofp, 0); rewind($ofp);
+        fwrite($ofp, json_encode($orders, JSON_UNESCAPED_UNICODE));
+        
+        flock($ofp, LOCK_UN); flock($sfp, LOCK_UN);
+        fclose($ofp); fclose($sfp);
+
+        return [
+            'item' => $finalMatchedItem,
+            'account' => $finalMatchedAccount,
+            'lockTicket' => $lockTicket,
+            'internalOrderId' => $internalOrderId
+        ];
+    }
+    
+    if ($ofp) fclose($ofp);
+    if ($sfp) fclose($sfp);
+    return "系统锁定等待超时，请稍后重试";
+}
         
         flock($fp, LOCK_UN);
         fclose($fp);
@@ -650,12 +660,17 @@ function proactiveCleanup() {
             
             if (is_array($data)) {
                 foreach ($data as &$order) {
-                    if (isset($order['status']) && $order['status'] === 'PENDING') {
-                        $createdAt = isset($order['createdAt']) ? strtotime($order['createdAt']) : 0;
-                        if ($createdAt > 0 && ($now - $createdAt > $timeoutSec)) {
-                            $order['status'] = 'CANCELLED';
-                            $changed = true;
-                        }
+                    $status = isset($order['status']) ? strtoupper($order['status']) : '';
+                    $createdAt = isset($order['createdAt']) ? strtotime($order['createdAt']) : 0;
+                    
+                    if ($status === 'PENDING' && $createdAt > 0 && ($now - $createdAt > $timeoutSec)) {
+                        $order['status'] = 'CANCELLED';
+                        $changed = true;
+                    }
+                    // v2.1.7: Cleanup stale QUEUEING orders (> 10 mins)
+                    if ($status === 'QUEUEING' && $createdAt > 0 && ($now - $createdAt > 600)) {
+                        $order['status'] = 'CANCELLED';
+                        $changed = true;
                     }
                 }
                 if ($changed) {
@@ -772,10 +787,12 @@ try {
         case 'match_and_lock':
             if ($_SERVER['REQUEST_METHOD'] !== 'POST') jsonResponse(['error' => 'POST required'], 405);
             $input = json_decode(file_get_contents('php://input'), true);
-            if (!$input || !isset($input['price'])) jsonResponse(['error' => 'Price required'], 400);
+            if (!$input || !isset($input['price']) || !isset($input['internalOrderId'])) {
+                jsonResponse(['error' => 'Price and internalOrderId required'], 400);
+            }
             
             $filters = isset($input['filters']) ? (array)$input['filters'] : [];
-            $res = matchAndLockItem($input['price'], isset($input['time']) ? $input['time'] : time()*1000, $filters);
+            $res = matchAndLockItem($input['price'], $input['internalOrderId'], $filters);
             
             if (is_array($res)) {
                 jsonResponse(['success' => true, 'data' => $res]);

@@ -62,7 +62,8 @@ export enum OrderStatus {
   PENDING = 'pending',
   FAILED = 'failed',
   REFUNDED = 'refunded',
-  CANCELLED = 'cancelled'
+  CANCELLED = 'cancelled',
+  QUEUEING = 'queueing'
 }
 
 export enum PaymentMethod {

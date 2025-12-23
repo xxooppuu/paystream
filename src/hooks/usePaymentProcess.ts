@@ -18,14 +18,20 @@ export const usePaymentProcess = () => {
     const [freshAccounts, setAccounts] = useState<StoreAccount[]>([]);
     const [paymentLink, setPaymentLink] = useState<string>('');
     const [lockTicket, setLockTicket] = useState<string | null>(null);
-    const [clientId] = useState(() => {
-        let id = sessionStorage.getItem('pay_client_id');
-        if (!id) {
-            id = 'C' + Math.random().toString(36).substring(2, 15);
-            sessionStorage.setItem('pay_client_id', id);
-        }
-        return id;
-    });
+    const [internalOrderId, setInternalOrderId] = useState<string | null>(null);
+    const [queuePosition, setQueuePosition] = useState<number | null>(null);
+
+    const generateInternalOrderId = () => {
+        const now = new Date();
+        const datePart = now.getFullYear().toString() +
+            (now.getMonth() + 1).toString().padStart(2, '0') +
+            now.getDate().toString().padStart(2, '0') +
+            now.getHours().toString().padStart(2, '0') +
+            now.getMinutes().toString().padStart(2, '0') +
+            now.getSeconds().toString().padStart(2, '0');
+        const randPart = Math.floor(1000 + Math.random() * 9000);
+        return `ZZPAY${datePart}${randPart}`;
+    };
     const [settings, setSettings] = useState<any>(null);
 
     const addLog = (msg: string) => {
@@ -37,85 +43,89 @@ export const usePaymentProcess = () => {
 
     // v1.8.x: Server-Side Atomic Match & Lock with Timeout
     const findAndLockInventory = async (amount: number, excludeIds: string[] = []): Promise<{ item: InventoryItem; freshAccounts: StoreAccount[] }> => {
-        const startTime = Date.now();
-        const endTime = startTime + QUEUE_TIMEOUT_MS;
-        setQueueEndTime(endTime);
-
-        let isQueueing = false;
+        const timeoutSec = 240; // 4 mins total wait
+        const endTime = Date.now() + timeoutSec * 1000;
         let attempts = 0;
+
+        // v2.1.7: PRE-ORDER QUEUEING
+        let currentOrderId = internalOrderId;
+        if (!currentOrderId) {
+            currentOrderId = generateInternalOrderId();
+            setInternalOrderId(currentOrderId);
+
+            addLog(`🕒 正在初始化排队订单 (ID: ${currentOrderId})...`);
+            try {
+                await fetch(getApiUrl('add_order'), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        id: currentOrderId,
+                        amount: amount,
+                        customer: 'Public Visitor',
+                        status: OrderStatus.QUEUEING,
+                        createdAt: new Date().toISOString()
+                    })
+                });
+            } catch (e) {
+                console.error("Pre-order creation failed", e);
+            }
+        }
 
         while (Date.now() < endTime) {
             attempts++;
 
-            // 1. Fetch Latest Settings
-            const setRes = await fetch(getApiUrl('settings') + `&_t=${Date.now()}`);
-            const freshSettings = await setRes.json();
-            setSettings(freshSettings);
-
-            if (attempts === 1) {
-                addLog(`🔍 扫描库存 (第${attempts}次): 正在请求服务端原子匹配...`);
-            }
-
-            // 2. Call Server-Side Atomic Match with Timeout
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 10000);
-
             try {
+                // 1. Fetch Latest Settings (for N calculation etc inside backend)
+                const setRes = await fetch(getApiUrl('settings') + `&_t=${Date.now()}`);
+                const freshSettings = await setRes.json();
+                setSettings(freshSettings);
+
+                if (attempts === 1) {
+                    addLog(`🔍 正在排队并等待商品释放...`);
+                }
+
                 const matchRes = await fetch(getApiUrl('match_and_lock'), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    signal: controller.signal,
                     body: JSON.stringify({
                         price: amount,
-                        time: Date.now(),
+                        internalOrderId: currentOrderId,
                         filters: {
                             specificShopId: freshSettings?.productMode === 'shop' ? freshSettings?.specificShopId : null,
-                            excludeIds: excludeIds,
-                            validityDuration: freshSettings?.validityDuration || 180,
-                            clientId: clientId
+                            validityDuration: freshSettings?.validityDuration || 180
                         }
                     })
                 });
-                clearTimeout(timeoutId);
 
                 if (matchRes.ok) {
                     const result = await matchRes.json();
                     if (result.success) {
-                        if (isQueueing) addLog('排队结束，匹配成功！');
-                        addLog(`✅ 匹配成功: ${result.data.item.title || result.data.item.id}`);
-                        setLockTicket(result.lockTicket);
+                        addLog(`✅ 匹配成功! [商品ID: ${result.data.item.id}]`);
+                        setLockTicket(result.data.lockTicket);
                         return {
                             item: result.data.item,
                             freshAccounts: [result.data.account]
                         };
                     }
-                } else if (matchRes.status === 404) {
-                    if (!isQueueing) {
-                        isQueueing = true;
-                        setStep(0.5);
-                        addLog('当前订单过多，进入排队模式...');
+                } else {
+                    const err = await matchRes.json().catch(() => ({}));
+                    if (err.error && err.error.includes('排队中')) {
+                        setStep(0.5); // 进入显示排队进度的 UI
+                        addLog(`${err.error}`);
+                        setQueuePosition(attempts);
+                    } else {
+                        addLog(`⚠️ 等待中: ${err.error || '正在获取库存优先级'}`);
                     }
-                } else {
-                    const errorData = await matchRes.json().catch(() => ({}));
-                    const errMsg = errorData.error || 'Server matching failed';
-                    addLog(`❌ 匹配失败: ${errMsg}`);
-                    throw new Error(errMsg);
                 }
-            } catch (err: any) {
-                if (err.name === 'AbortError') {
-                    addLog('⚠️ 匹配请求超时，正在重试...');
-                } else {
-                    throw err;
-                }
-            } finally {
-                clearTimeout(timeoutId);
+            } catch (e) {
+                console.error("Match cycle failed", e);
             }
 
-            await delay(attempts < 3 ? 1000 : POLLING_INTERVAL_MS);
+            // Wait 4-6s between polls to avoid heavy load
+            await new Promise(r => setTimeout(r, 4000 + Math.random() * 2000));
         }
 
-        setQueueEndTime(null);
-        throw new Error('当前过于繁忙，请稍后重试');
+        throw new Error('当前排队人数过多或未匹配到空闲商品，请稍后刷新重试');
     };
 
     const startPayment = useCallback(async (amount: number, specificBuyerId?: string) => {
@@ -349,16 +359,16 @@ export const usePaymentProcess = () => {
             };
 
             // Save Order to DB (Persistent merge on server)
-            // v2.1.4: Include Lock Ticket for secondary validation
+            // v2.1.7: Use pre-generated internalOrderId and update status to PENDING
             const saveRes = await fetch(getApiUrl('add_order'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     ...newOrder,
+                    id: internalOrderId, // Use the same ID as queueing
                     lockTicket: lockTicket,
                     inventoryId: item.id,
-                    accountId: item.accountId,
-                    clientId: clientId
+                    accountId: item.accountId
                 })
             });
 
@@ -461,6 +471,8 @@ export const usePaymentProcess = () => {
         freshAccounts,
         cancelCurrentOrder,
         orderCreatedAt: order?.createdAt,
-        settings
+        settings,
+        internalOrderId,
+        queuePosition
     };
 };
