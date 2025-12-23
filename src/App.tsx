@@ -174,11 +174,17 @@ const App: React.FC = () => {
     }
   };
 
-  // Manual Cancellation Handler
   const handleCancelOrder = async (order: Order) => {
     if (!confirm('确定要取消此订单吗？')) return;
 
-    const success = await performOrderCancellation(order);
+    let success = await performOrderCancellation(order);
+
+    if (!success) {
+      if (confirm('API取消失败（可能订单已在外部取消或过期）。\n是否强制在本地完成取消并释放库存？')) {
+        success = true; // Proceed with local cleanup
+      }
+    }
+
     if (success) {
       // Update Order Status locally
       const updatedOrders = orders.map(o =>
@@ -203,9 +209,7 @@ const App: React.FC = () => {
 
       // Release Inventory
       await releaseInventoryForOrder(order);
-      alert('订单已取消');
-    } else {
-      alert('取消失败，可能是API调用错误或订单状态已变更');
+      alert('订单已取消并释放库存');
     }
   };
 
@@ -255,6 +259,15 @@ const App: React.FC = () => {
 
                 // Release Inventory
                 await releaseInventoryForOrder(o);
+              } else {
+                // v2.0.1: Hard Expiry - if it's been double the validity duration and still pending, force it.
+                const hardExpirySec = validitySec * 2;
+                if (now - createdTime > hardExpirySec * 1000) {
+                  console.log(`Hard-cancelling stuck order: ${o.id}`);
+                  updatedOrders[i] = { ...o, status: OrderStatus.CANCELLED };
+                  hasChanges = true;
+                  await releaseInventoryForOrder(o);
+                }
               }
             }
           }
@@ -405,14 +418,14 @@ const App: React.FC = () => {
     if (!orders || orders.length === 0 || currentView !== 'orders') return;
 
     const interval = setInterval(() => {
-      // Filter orders: PENDING and created within last 30 mins
+      // Filter orders: PENDING and created within last 45 mins
       const now = Date.now() + clockDrift;
-      const thirtyMinsAgo = now - 30 * 60 * 1000;
+      const fortyFiveMinsAgo = now - 45 * 60 * 1000;
 
       const activePendingOrders = orders.filter(o => {
         if (o.status !== OrderStatus.PENDING) return false;
         const createdTime = new Date(o.createdAt).getTime();
-        return createdTime > thirtyMinsAgo;
+        return createdTime > fortyFiveMinsAgo;
       });
 
       if (activePendingOrders.length > 0) {
@@ -566,7 +579,7 @@ const App: React.FC = () => {
           </div>
           {/* Version Footer */}
           <div className="fixed bottom-4 right-4 text-xs text-slate-400 bg-white px-3 py-1 rounded-full shadow-sm border border-slate-200">
-            Admin v2.0.0 (Stable Logic Fix)
+            Admin v2.0.1 (Force Release Fix)
           </div>
         </main>
       </div>
