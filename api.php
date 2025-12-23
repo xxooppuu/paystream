@@ -428,7 +428,7 @@ function atomicUnlockItem($inventoryId) {
 
 /**
  * Proactive cleanup: resets expired inventory locks and cancels old stale orders
- * v2.0.0 Stable Safety Net
+ * v2.1.1 Enhanced Safety Net
  */
 function proactiveCleanup() {
     global $baseDir;
@@ -529,14 +529,14 @@ function getClientIp() {
 try {
     switch ($act) {
         case 'shops':
-            proactiveCleanup();
+            proactiveCleanup(); // Ensure stale locks are released before viewing
             handleFileRequest('shops.json');
             break;
         case 'buyers':
             handleFileRequest('buyers.json');
             break;
         case 'orders':
-            proactiveCleanup();
+            proactiveCleanup(); // Ensure stale orders are cancelled before viewing
             handleFileRequest('orders.json');
             break;
         case 'settings':

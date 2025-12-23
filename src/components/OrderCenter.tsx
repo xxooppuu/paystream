@@ -160,10 +160,10 @@ export const OrderCenter: React.FC<OrderCenterProps> = ({ orders, onCancelOrder,
                                 paginatedOrders.map((order) => (
                                     <tr key={order.id} className="hover:bg-slate-50 transition-colors group">
                                         <td className="p-4">
-                                            <span className="font-mono text-slate-700 text-sm">{order.orderNo}</span>
+                                            <span className="font-mono text-slate-700 text-sm">{order.id}</span>
                                         </td>
                                         <td className="p-4">
-                                            <span className="text-slate-500 text-sm">{order.id}</span>
+                                            <span className="text-slate-500 text-sm">{order.orderNo}</span>
                                         </td>
                                         <td className="p-4">
                                             <span className="font-semibold text-slate-800">{order.amount.toFixed(2)}元</span>
