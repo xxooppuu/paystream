@@ -311,7 +311,9 @@ function atomicLockItem($inventoryId, $matchedTime) {
         rewind($fp);
         $content = stream_get_contents($fp);
         
-        // v1.6.8: Force UTF-8 before decode to handle broken status chars
+        // v2.1.2: Standardize on Server Time (IGNORE CLIENT TIME)
+        $matchedTime = time() * 1000;
+        
         if (function_exists('mb_convert_encoding')) {
             $content = mb_convert_encoding($content, 'UTF-8', 'UTF-8,GBK,ISO-8859-1');
         }
