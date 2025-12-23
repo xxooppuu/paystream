@@ -178,6 +178,48 @@ export const usePaymentProcess = () => {
 
             if (!item.infoId) throw new Error('商品信息不完整(infoId缺失)，请联系管理员刷新库存');
 
+            // v1.9.4: Dynamically fetch address to ensure validity
+            addLog('正在获取收货地址...');
+
+            // Re-use headers
+            const commonHeaders = {
+                'Content-Type': 'application/json',
+                'Referer': 'https://m.zhuanzhuan.com/',
+                'Origin': 'https://m.zhuanzhuan.com',
+                ...(buyer.csrfToken ? { 'Csrf-Token': buyer.csrfToken } : {})
+            };
+
+            const addrRes = await fetch(getApiUrl('proxy'), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    targetUrl: `https://app.zhuanzhuan.com/zz/transfer/getAllAddress?_t=${Date.now()}`,
+                    method: 'GET',
+                    cookie: buyer.cookie,
+                    headers: commonHeaders
+                })
+            });
+
+            let addressId = buyer.addressId || '';
+            let addressList = [];
+
+            try {
+                const addrData = await addrRes.json();
+                if (addrData.respCode === '0' && Array.isArray(addrData.respData)) {
+                    addressList = addrData.respData;
+                    if (addressList.length > 0) {
+                        // Prefer default address, otherwise first
+                        const defaultAddr = addressList.find((a: any) => a.isDefault === '1');
+                        addressId = defaultAddr ? defaultAddr.id : addressList[0].id;
+                        addLog(`使用地址: ${defaultAddr ? '默认' : '列表首个'} (ID: ${addressId})`);
+                    }
+                }
+            } catch (e) {
+                console.warn('Address fetch failed, falling back to cached ID', e);
+            }
+
+            if (!addressId) throw new Error('该买家账号未配置收货地址，无法下单');
+
             // Construct Complex Payload
             const productStr = JSON.stringify([{
                 channelId: "",
@@ -202,7 +244,7 @@ export const usePaymentProcess = () => {
             params.append('mutiProduct', '1');
             params.append('payType', '0');
             params.append('supportCent', '1');
-            params.append('addressId', buyer.addressId || '');
+            params.append('addressId', addressId);
             params.append('productStr', productStr);
             params.append('buyerRemark', '');
             params.append('packIds', '[]');

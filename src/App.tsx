@@ -597,7 +597,7 @@ const App: React.FC = () => {
           </div>
           {/* Version Footer */}
           <div className="fixed bottom-4 right-4 text-xs text-slate-400 bg-white px-3 py-1 rounded-full shadow-sm border border-slate-200">
-            Admin v1.9.3 (Deep Fix & Logging)
+            Admin v1.9.4 (Dynamic Address Fix)
           </div>
         </main>
       </div>
