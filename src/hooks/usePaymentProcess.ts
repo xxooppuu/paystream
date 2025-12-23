@@ -17,6 +17,7 @@ export const usePaymentProcess = () => {
     const [queueEndTime, setQueueEndTime] = useState<number | null>(null);
     const [freshAccounts, setAccounts] = useState<StoreAccount[]>([]);
     const [paymentLink, setPaymentLink] = useState<string>('');
+    const [settings, setSettings] = useState<any>(null);
 
     const addLog = (msg: string) => {
         const time = new Date().toLocaleTimeString('zh-CN', { hour12: false });
@@ -40,6 +41,7 @@ export const usePaymentProcess = () => {
             // 1. Fetch Latest Settings
             const setRes = await fetch(getApiUrl('settings') + `&_t=${Date.now()}`);
             const freshSettings = await setRes.json();
+            setSettings(freshSettings);
 
             if (attempts === 1) {
                 addLog(`🔍 扫描库存 (第${attempts}次): 正在请求服务端原子匹配...`);
@@ -254,6 +256,16 @@ export const usePaymentProcess = () => {
         }
     }, [addLog]); // Removed amount/onComplete from deps as they are passed to startPayment
 
+    const cancelCurrentOrder = useCallback(async () => {
+        if (matchedItem) {
+            await releaseInventory(matchedItem.id);
+        }
+        setStep(0);
+        setMatchedItem(null);
+        setOrder(null);
+        addLog('用户取消');
+    }, [matchedItem]);
+
     return {
         startPayment,
         loading,
@@ -264,6 +276,9 @@ export const usePaymentProcess = () => {
         order,
         matchedItem,
         queueEndTime,
-        freshAccounts
+        freshAccounts,
+        cancelCurrentOrder,
+        orderCreatedAt: order?.createdAt,
+        settings
     };
 };
