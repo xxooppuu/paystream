@@ -18,6 +18,7 @@ export interface BuyerAccount {
   id: string;
   remark: string;
   cookie: string;
+  csrfToken?: string;
   totalOrders: number;
   successOrders: number;
   addressId?: string;

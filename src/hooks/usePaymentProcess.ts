@@ -222,6 +222,16 @@ export const usePaymentProcess = () => {
             // The Proxy expects `body` string in the JSON payload
             const formDataBody = params.toString();
 
+            // Headers for Proxy Request
+            const headers: any = {
+                'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8',
+                'Referer': 'https://m.zhuanzhuan.com/',
+                'Origin': 'https://m.zhuanzhuan.com'
+            };
+            if (buyer.csrfToken) {
+                headers['Csrf-Token'] = buyer.csrfToken;
+            }
+
             const orderRes = await fetch(getApiUrl('proxy'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -230,7 +240,7 @@ export const usePaymentProcess = () => {
                     method: 'POST',
                     cookie: buyer.cookie,
                     body: formDataBody,
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8' }
+                    headers: headers
                 })
             });
 
@@ -248,11 +258,17 @@ export const usePaymentProcess = () => {
                     throw new Error(`Invalid JSON response: ${snippet}`);
                 }
             } catch (e: any) {
-                throw new Error(`下单请求异常: ${e.message}`);
+                addLog(`下单请求未能解析: ${e.message}`);
+                throw new Error('下单API响应异常');
             }
 
-            if (orderData.respCode !== '0') throw new Error(orderData.respMsg || '下单失败');
-
+            // Enhanced Error Reporting for v1.9.3
+            if (orderData.respCode !== '0') {
+                console.error('Order Failed Details:', orderData);
+                const errMsg = orderData.respMsg || orderData.errorMsg || '下单失败';
+                // Include respCode to help diagnosis
+                throw new Error(`下单被拒绝 [Code:${orderData.respCode}]: ${errMsg}`);
+            }
             // v1.8.4: Create Link for scanning
             const zzOrderNo = orderData.respData.orderId;
             const payUrl = `https://app.zhuanzhuan.com/zzx/transfer/pay?orderId=${zzOrderNo}`;
