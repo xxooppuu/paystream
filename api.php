@@ -8,6 +8,9 @@
  * - Proxy: /api.php?act=proxy (POST)
  */
 
+// Version Configuration
+define('APP_VERSION', 'v2.1.8-SQL');
+
 // Prevent any output before headers
 ob_start();
 
@@ -955,7 +958,11 @@ function performSetup($adminPassword) {
 try {
     switch ($act) {
         case 'check_setup':
-            jsonResponse(['installed' => $isInstalled]);
+            jsonResponse([
+                'installed' => $isInstalled,
+                'version' => APP_VERSION,
+                'status' => $isInstalled ? 'ok' : 'needs_setup'
+            ]);
             break;
         case 'setup':
             $input = json_decode(file_get_contents('php://input'), true);
