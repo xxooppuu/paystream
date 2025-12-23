@@ -197,6 +197,9 @@ function matchAndLockItem($targetPrice, $matchedTime, $filters = []) {
         $matchedAccount = null;
         $matchedItem = null;
         
+        $fallbackAccount = null;
+        $fallbackItem = null;
+        
         // Extract filters
         $specificShopId = isset($filters['specificShopId']) ? (string)$filters['specificShopId'] : null;
         $excludeIds = isset($filters['excludeIds']) ? (array)$filters['excludeIds'] : [];
@@ -225,15 +228,31 @@ function matchAndLockItem($targetPrice, $matchedTime, $filters = []) {
                 $lastTime = isset($item['lastMatchedTime']) ? (float)$item['lastMatchedTime'] : 0;
                 $isExpired = $isOccupied && ($lastTime > 0) && ((time() * 1000) - $lastTime > $validityMs);
 
-                if ($price == (float)$targetPrice && $isStatusOk && ($internalStatus === 'idle' || $isExpired)) {
-                    $item['internalStatus'] = 'occupied';
-                    $item['lastMatchedTime'] = $matchedTime;
-                    $matchedItem = $item;
-                    $matchedAccount = $account;
-                    break 2;
+                if ($isStatusOk && ($internalStatus === 'idle' || $isExpired)) {
+                    // Priority 1: Exact Price Match
+                    if (abs($price - (float)$targetPrice) < 0.01) {
+                        $matchedItem = &$item;
+                        $matchedAccount = &$account;
+                        break 2;
+                    }
+                    // Priority 2: Take first available idle/expired as fallback
+                    if (!$fallbackItem) {
+                        $fallbackItem = &$item;
+                        $fallbackAccount = &$account;
+                    }
                 }
             }
         }
+        
+        // Use fallback if no exact match found
+        if (!$matchedItem && $fallbackItem) {
+            $matchedItem = &$fallbackItem;
+            $matchedAccount = &$fallbackAccount;
+        }
+
+        if ($matchedItem) {
+            $matchedItem['internalStatus'] = 'occupied';
+            $matchedItem['lastMatchedTime'] = $matchedTime;
         
         if ($matchedItem) {
             ftruncate($fp, 0);
