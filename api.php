@@ -397,7 +397,9 @@ function atomicUnlockItem($inventoryId) {
         foreach ($data as &$account) {
             if (!isset($account['inventory']) || !is_array($account['inventory'])) continue;
             foreach ($account['inventory'] as &$item) {
-                if ((string)$item['id'] === $targetId) {
+                // Robust comparison (string vs numeric)
+                $itemIdStr = (string)$item['id'];
+                if ($itemIdStr === $targetId) {
                     $item['internalStatus'] = 'idle';
                     unset($item['lastMatchedTime']);
                     $found = true;
@@ -634,13 +636,17 @@ try {
             }
 
             $reqHeaders = [];
-            $reqHeaders[] = 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
-            if ($cookie) {
-                $reqHeaders[] = 'Cookie: ' . $cookie;
-            }
+            $hasUA = false;
             foreach ($headers as $k => $v) {
                 if (strtolower($k) === 'host') continue;
+                if (strtolower($k) === 'user-agent') $hasUA = true;
                 $reqHeaders[] = "$k: $v";
+            }
+            if (!$hasUA) {
+                $reqHeaders[] = 'User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 zzVersion/11.21.5 zzT/16 zzDevice/1_141.0_3.0 zzApp/58ZhuanZhuan';
+            }
+            if ($cookie) {
+                $reqHeaders[] = 'Cookie: ' . $cookie;
             }
             
             curl_setopt($ch, CURLOPT_HTTPHEADER, $reqHeaders);

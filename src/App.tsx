@@ -105,20 +105,24 @@ const App: React.FC = () => {
       }
 
       // 2. Call Cancel API (Proxy)
-      // According to '取消订单.txt', POST to https://app.zhuanzhuan.com/zzx/transfer/cancelOrder
-      // Body: cancelReason=不想要了&orderId=...
+      // Alignment v2.1.0: Use zzx domain and URLSearchParams for correct encoding
+      const cancelParams = new URLSearchParams();
+      cancelParams.append('cancelReason', '不想要了');
+      cancelParams.append('subCancelReason', '');
+      cancelParams.append('orderId', order.orderNo);
 
       const proxyRes = await fetch(PROXY_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          targetUrl: 'https://app.zhuanzhuan.com/zz/transfer/cancelOrder',
+          targetUrl: 'https://app.zhuanzhuan.com/zzx/transfer/cancelOrder',
           method: 'POST',
           cookie: buyer.cookie,
-          body: `cancelReason=不想要了&subCancelReason=&orderId=${order.orderNo}`,
+          body: cancelParams.toString(),
           headers: {
             'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8',
-            'Referer': 'https://m.zhuanzhuan.com/'
+            'Referer': 'https://m.zhuanzhuan.com/',
+            'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 zzVersion/11.21.5 zzT/16 zzDevice/1_141.0_3.0 zzApp/58ZhuanZhuan'
           }
         })
       });
@@ -140,37 +144,26 @@ const App: React.FC = () => {
     }
   };
 
-  // Helper: Release Inventory
+  // Helper: Release Inventory (Atomic Server-Side)
   const releaseInventoryForOrder = async (order: Order) => {
     if (!order.inventoryId) return;
 
-    const sRes = await fetch(getApiUrl('shops'));
-    if (sRes.ok) {
-      const shops: any[] = await sRes.json();
-      let shopsChanged = false;
-
-      const newShops = shops.map(shop => {
-        if (shop.inventory) {
-          const newInv = shop.inventory.map((item: any) => {
-            if (item.id === order.inventoryId && item.internalStatus === 'occupied') {
-              shopsChanged = true;
-              return { ...item, internalStatus: 'idle', status: '在售(自动释放)' };
-            }
-            return item;
-          });
-          return { ...shop, inventory: newInv };
-        }
-        return shop;
+    try {
+      // v2.1.0: Use the dedicated atomic release endpoint instead of manual file patching
+      const res = await fetch(getApiUrl('release_inventory'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: order.inventoryId })
       });
 
-      if (shopsChanged) {
-        await fetch(getApiUrl('shops'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(newShops)
-        });
-        console.log('Released inventory for order:', order.id);
+      if (res.ok) {
+        console.log('Atomically released inventory for order:', order.id);
+      } else {
+        const errData = await res.json();
+        console.error('Atomic release failed:', errData.error);
       }
+    } catch (e) {
+      console.error('Error calling release_inventory API:', e);
     }
   };
 
@@ -579,7 +572,7 @@ const App: React.FC = () => {
           </div>
           {/* Version Footer */}
           <div className="fixed bottom-4 right-4 text-xs text-slate-400 bg-white px-3 py-1 rounded-full shadow-sm border border-slate-200">
-            Admin v2.0.1 (Force Release Fix)
+            Admin v2.1.0 (Business Integrity Fix)
           </div>
         </main>
       </div>

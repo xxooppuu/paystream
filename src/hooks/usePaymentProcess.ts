@@ -137,7 +137,12 @@ export const usePaymentProcess = () => {
                 body: JSON.stringify({
                     targetUrl: `https://app.zhuanzhuan.com/zzopen/c2b_consignment/changePrice?argueSwitch=true&buyPrice=0&orderId=${item.id}&infoPrice=${cents}&infoShowPrice=${cents}&selectedFastWithdrawService=0`,
                     method: 'GET',
-                    cookie: sellerAccount.cookie
+                    cookie: sellerAccount.cookie,
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 zzVersion/11.21.5 zzT/16 zzDevice/1_141.0_3.0 zzApp/58ZhuanZhuan',
+                        'Referer': 'https://m.zhuanzhuan.com/',
+                        ...(sellerAccount.csrfToken ? { 'Csrf-Token': sellerAccount.csrfToken } : {})
+                    }
                 })
             })
 
@@ -268,7 +273,8 @@ export const usePaymentProcess = () => {
             const headers: any = {
                 'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8',
                 'Referer': 'https://m.zhuanzhuan.com/',
-                'Origin': 'https://m.zhuanzhuan.com'
+                'Origin': 'https://m.zhuanzhuan.com',
+                'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 zzVersion/11.21.5 zzT/16 zzDevice/1_141.0_3.0 zzApp/58ZhuanZhuan'
             };
             if (buyer.csrfToken) {
                 headers['Csrf-Token'] = buyer.csrfToken;
