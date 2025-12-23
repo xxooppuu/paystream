@@ -79,20 +79,32 @@ class DB {
     }
 }
 
-// 1. Installation Check
+// 1. Robust Installation Check
 $dbFile = $baseDir . '/paystream.db';
-$isInstalled = file_exists($dbFile);
+function is_system_installed() {
+    global $dbFile;
+    if (!file_exists($dbFile) || filesize($dbFile) === 0) return false;
+    try {
+        $pdo = new PDO("sqlite:" . $dbFile);
+        $stmt = $pdo->query("SELECT name FROM sqlite_master WHERE type='table' AND name='settings'");
+        return $stmt->fetch() !== false;
+    } catch (Exception $e) {
+        return false;
+    }
+}
 
-if (!$isInstalled && !in_array($act, ['setup', 'get_ip'])) {
+$isInstalled = is_system_installed();
+
+if (!$isInstalled && !in_array($act, ['setup', 'get_ip', 'check_setup'])) {
     jsonResponse(['status' => 'needs_setup', 'message' => 'System needs initialization'], 200);
 }
 
-// 2. Initialize DB if installed
-if ($isInstalled) {
-    try {
-        $db = DB::getInstance();
-    } catch (Exception $e) {
-        if ($act !== 'setup') jsonResponse(['error' => 'Database connection failed: ' . $e->getMessage()], 500);
+// 2. Initialize DB if potentially installed or for setup
+try {
+    $db = DB::getInstance();
+} catch (Exception $e) {
+    if (!in_array($act, ['setup', 'get_ip', 'check_setup'])) {
+        jsonResponse(['error' => 'Database connection failed: ' . $e->getMessage()], 500);
     }
 }
 
