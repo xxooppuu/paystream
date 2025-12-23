@@ -92,23 +92,30 @@ function handleFileRequest($filename, $default = []) {
 
             // v1.8.0: Smart Merge for ALL critical files
             if ($filename === 'shops.json' && is_array($oldData) && is_array($newData)) {
-                // ... (保持原有的 shops 合并逻辑)
+                // v2.1.4: Enhanced Lock Protection using Composite Keys (AccountID + ItemID)
                 $lockMap = [];
                 foreach ($oldData as $oldAccount) {
+                    $accId = isset($oldAccount['id']) ? (string)$oldAccount['id'] : 'unknown';
                     if (!isset($oldAccount['inventory']) || !is_array($oldAccount['inventory'])) continue;
                     foreach ($oldAccount['inventory'] as $oldItem) {
                         if (isset($oldItem['internalStatus']) && $oldItem['internalStatus'] === 'occupied') {
-                            $lockMap[(string)$oldItem['id']] = $oldItem;
+                            $compositeKey = $accId . '_' . (string)$oldItem['id'];
+                            $lockMap[$compositeKey] = $oldItem;
                         }
                     }
                 }
                 foreach ($newData as &$newAccount) {
+                    $newAccId = isset($newAccount['id']) ? (string)$newAccount['id'] : 'unknown';
                     if (!isset($newAccount['inventory']) || !is_array($newAccount['inventory'])) continue;
                     foreach ($newAccount['inventory'] as &$newItem) {
-                        $id = (string)$newItem['id'];
-                        if (isset($lockMap[$id])) {
-                            $newItem['internalStatus'] = $lockMap[$id]['internalStatus'];
-                            $newItem['lastMatchedTime'] = isset($lockMap[$id]['lastMatchedTime']) ? $lockMap[$id]['lastMatchedTime'] : null;
+                        $compositeKey = $newAccId . '_' . (string)$newItem['id'];
+                        if (isset($lockMap[$compositeKey])) {
+                            // Preserve server-side lock state and ticket
+                            $newItem['internalStatus'] = $lockMap[$compositeKey]['internalStatus'];
+                            $newItem['lastMatchedTime'] = isset($lockMap[$compositeKey]['lastMatchedTime']) ? $lockMap[$compositeKey]['lastMatchedTime'] : null;
+                            if (isset($lockMap[$compositeKey]['lockTicket'])) {
+                                $newItem['lockTicket'] = $lockMap[$compositeKey]['lockTicket'];
+                            }
                         }
                     }
                 }
@@ -292,9 +299,11 @@ function matchAndLockItem($targetPrice, $matchedTime, $filters = []) {
         $finalItemIdx = ($matchedItemIdx !== -1) ? $matchedItemIdx : $fallbackItemIdx;
 
         if ($finalAccIdx !== -1 && $finalItemIdx !== -1) {
-            // Apply Lock
+            // Apply Lock with unique Lock Ticket for v2.1.4
+            $lockTicket = uniqid('LT_', true);
             $data[$finalAccIdx]['inventory'][$finalItemIdx]['internalStatus'] = 'occupied';
             $data[$finalAccIdx]['inventory'][$finalItemIdx]['lastMatchedTime'] = $matchedTime;
+            $data[$finalAccIdx]['inventory'][$finalItemIdx]['lockTicket'] = $lockTicket;
             
             $finalMatchedItem = $data[$finalAccIdx]['inventory'][$finalItemIdx];
             $finalMatchedAccount = $data[$finalAccIdx];
@@ -307,7 +316,8 @@ function matchAndLockItem($targetPrice, $matchedTime, $filters = []) {
             fclose($fp);
             return [
                 'item' => $finalMatchedItem,
-                'account' => $finalMatchedAccount
+                'account' => $finalMatchedAccount,
+                'lockTicket' => $lockTicket
             ];
         }
         
@@ -432,6 +442,7 @@ function atomicUnlockItem($inventoryId) {
                 if ($itemIdStr === $targetId) {
                     $item['internalStatus'] = 'idle';
                     unset($item['lastMatchedTime']);
+                    unset($item['lockTicket']);
                     $found = true;
                     break 2;
                 }
@@ -483,6 +494,7 @@ function proactiveCleanup() {
                             if ($lastTime > 0 && ($now - $lastTime > $timeoutMs)) {
                                 $item['internalStatus'] = 'idle';
                                 unset($item['lastMatchedTime']);
+                                unset($item['lockTicket']);
                                 $changed = true;
                             }
                         }
@@ -582,6 +594,43 @@ try {
             if ($_SERVER['REQUEST_METHOD'] !== 'POST') jsonResponse(['error' => 'POST required'], 405);
             $input = json_decode(file_get_contents('php://input'), true);
             if (!$input) jsonResponse(['error' => 'Invalid data'], 400);
+            
+            // v2.1.4: Secondary Hardcore Validation before adding order
+            if (isset($input['lockTicket']) && isset($input['inventoryId']) && isset($input['accountId'])) {
+                $shopsFile = $baseDir . '/shops.json';
+                if (file_exists($shopsFile)) {
+                    $sfp = fopen($shopsFile, 'c+b');
+                    if (flock($sfp, LOCK_EX)) {
+                        $sContent = stream_get_contents($sfp);
+                        $sData = json_decode($sContent, true);
+                        $validLock = false;
+                        if (is_array($sData)) {
+                            foreach ($sData as $acc) {
+                                if ((string)$acc['id'] === (string)$input['accountId']) {
+                                    foreach ($acc['inventory'] as $invItem) {
+                                        if ((string)$invItem['id'] === (string)$input['inventoryId']) {
+                                            if (isset($invItem['internalStatus']) && $invItem['internalStatus'] === 'occupied' && 
+                                                isset($invItem['lockTicket']) && $invItem['lockTicket'] === $input['lockTicket']) {
+                                                $validLock = true;
+                                            }
+                                            break 2;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        flock($sfp, LOCK_UN);
+                        fclose($sfp);
+                        if (!$validLock) {
+                            jsonResponse(['error' => '库存锁定已失效或被他人抢占，请重新扫描匹配', 'code' => 'LOCK_INVALID'], 409);
+                        }
+                    } else {
+                        fclose($sfp);
+                        jsonResponse(['error' => '系统繁忙，无法校验库存锁'], 503);
+                    }
+                }
+            }
+            
             $res = atomicAppend('orders.json', $input);
             if ($res === true) {
                 jsonResponse(['success' => true]);

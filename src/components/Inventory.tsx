@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import { StoreAccount, InventoryItem, ZZResponse, Order, OrderStatus } from '../types';
 import { getApiUrl, PROXY_URL } from '../config';
-import { performOrderCancellation } from '../utils/orderActions';
+import { performOrderCancellation, releaseInventory } from '../utils/orderActions';
 
 export const Inventory: React.FC = () => {
 
@@ -267,8 +267,13 @@ export const Inventory: React.FC = () => {
                 internalStatus: item.internalStatus === 'occupied' ? 'idle' : item.internalStatus,
                 lastMatchedTime: undefined
             } as InventoryItem));
-
             setInventory(releasedInventory);
+
+            // v2.1.4: Execute Atomic Releases for each occupied item
+            for (const item of occupiedItems) {
+                await releaseInventory(item.id);
+            }
+
             await saveShopsToBackend(accounts, releasedInventory);
 
             alert(`✅ 成功释放 ${occupiedItems.length} 个商品，并取消了 ${cancelCount} 个关联订单！`);
@@ -305,6 +310,11 @@ export const Inventory: React.FC = () => {
             i.id === item.id ? { ...i, internalStatus: 'idle' as const, status: '在售(手动释放)' } : i
         );
         setInventory(updatedInventory);
+
+        // v2.1.4: Use Atomic Release via Utility
+        await releaseInventory(item.id);
+
+        // Sync the rest of the accounts state if needed, though releaseInventory is more robust
         saveShopsToBackend(accounts, updatedInventory);
     };
 

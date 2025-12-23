@@ -17,6 +17,7 @@ export const usePaymentProcess = () => {
     const [queueEndTime, setQueueEndTime] = useState<number | null>(null);
     const [freshAccounts, setAccounts] = useState<StoreAccount[]>([]);
     const [paymentLink, setPaymentLink] = useState<string>('');
+    const [lockTicket, setLockTicket] = useState<string | null>(null);
     const [settings, setSettings] = useState<any>(null);
 
     const addLog = (msg: string) => {
@@ -73,6 +74,7 @@ export const usePaymentProcess = () => {
                     if (result.success) {
                         if (isQueueing) addLog('排队结束，匹配成功！');
                         addLog(`✅ 匹配成功: ${result.data.item.title || result.data.item.id}`);
+                        setLockTicket(result.lockTicket);
                         return {
                             item: result.data.item,
                             freshAccounts: [result.data.account]
@@ -338,11 +340,25 @@ export const usePaymentProcess = () => {
             };
 
             // Save Order to DB (Persistent merge on server)
-            await fetch(getApiUrl('add_order'), {
+            // v2.1.4: Include Lock Ticket for secondary validation
+            const saveRes = await fetch(getApiUrl('add_order'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(newOrder)
+                body: JSON.stringify({
+                    ...newOrder,
+                    lockTicket: lockTicket,
+                    inventoryId: item.id,
+                    accountId: item.accountId
+                })
             });
+
+            if (!saveRes.ok) {
+                const sData = await saveRes.json().catch(() => ({}));
+                if (saveRes.status === 409 && sData.code === 'LOCK_INVALID') {
+                    throw new Error('库存锁定已失效（可能已被他人抢占），请刷新页面重试');
+                }
+                throw new Error(sData.error || '保存订单失败');
+            }
 
             setOrder(newOrder);
             addLog(`下单成功! 订单号: ${newOrder.orderNo}`);
