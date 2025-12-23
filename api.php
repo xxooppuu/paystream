@@ -108,9 +108,24 @@ function handleFileRequest($filename, $default = []) {
                 $input = json_encode($newData, JSON_UNESCAPED_UNICODE);
             } else if ($filename === 'orders.json' && is_array($oldData) && is_array($newData)) {
                 // v1.8.0: Lossless Order Merge
+                // v1.8.9: Smart Status Protection (Prevent Stale Overwrites)
                 $orderMap = [];
                 foreach ($oldData as $o) $orderMap[$o['id']] = $o;
-                foreach ($newData as $o) $orderMap[$o['id']] = $o; // New data overwrites old status if ID matches
+                
+                foreach ($newData as $o) {
+                    $id = $o['id'];
+                    if (isset($orderMap[$id])) {
+                        // Smart Merge: Don't let 'pending' overwrite terminal states
+                        $oldStatus = isset($orderMap[$id]['status']) ? $orderMap[$id]['status'] : '';
+                        $newStatus = isset($o['status']) ? $o['status'] : '';
+                        
+                        $terminals = ['success', 'paid', 'cancelled', 'refunded', 'failed', 'refund'];
+                        if (in_array(strtolower($oldStatus), $terminals) && strtolower($newStatus) === 'pending') {
+                            $o['status'] = $oldStatus; // Keep server's terminal status
+                        }
+                    }
+                    $orderMap[$id] = $o; 
+                }
                 $input = json_encode(array_values($orderMap), JSON_UNESCAPED_UNICODE);
             }
 

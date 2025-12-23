@@ -139,7 +139,26 @@ export const usePaymentProcess = () => {
                     headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
                 })
             });
-            const priceData = await changePriceRes.json();
+
+            // v1.8.9: Robust JSON parsing to handle HTML/Proxy errors gracefully
+            let priceData;
+            try {
+                if (!changePriceRes.ok) {
+                    throw new Error(`HTTP ${changePriceRes.status}`);
+                }
+                const text = await changePriceRes.text();
+                try {
+                    priceData = JSON.parse(text);
+                } catch (e) {
+                    // If parsing fails, it's likely HTML error
+                    // Extract title if possible or just show snippet
+                    const snippet = text.substring(0, 100).replace(/\n/g, ' ');
+                    throw new Error(`Invalid JSON response: ${snippet}`);
+                }
+            } catch (e: any) {
+                throw new Error(`改价请求异常: ${e.message}`);
+            }
+
             if (priceData.respCode !== '0') throw new Error(priceData.respMsg || '改价失败');
             addLog('改价成功');
 
@@ -167,7 +186,24 @@ export const usePaymentProcess = () => {
                     headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
                 })
             });
-            const orderData = await orderRes.json();
+
+            // v1.8.9: Robust JSON parsing for Create Order
+            let orderData;
+            try {
+                if (!orderRes.ok) {
+                    throw new Error(`HTTP ${orderRes.status}`);
+                }
+                const text = await orderRes.text();
+                try {
+                    orderData = JSON.parse(text);
+                } catch (e) {
+                    const snippet = text.substring(0, 100).replace(/\n/g, ' ');
+                    throw new Error(`Invalid JSON response: ${snippet}`);
+                }
+            } catch (e: any) {
+                throw new Error(`下单请求异常: ${e.message}`);
+            }
+
             if (orderData.respCode !== '0') throw new Error(orderData.respMsg || '下单失败');
 
             // v1.8.4: Create Link for scanning
