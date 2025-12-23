@@ -203,6 +203,10 @@ function matchAndLockItem($targetPrice, $matchedTime, $filters = []) {
         }
         $data = json_decode($content, true);
         
+        // v2.1.2: Standardize on Server Time (IGNORE CLIENT TIME)
+        $now = time() * 1000;
+        $matchedTime = $now; 
+        
         if (!is_array($data)) {
             flock($fp, LOCK_UN);
             fclose($fp);
@@ -238,10 +242,10 @@ function matchAndLockItem($targetPrice, $matchedTime, $filters = []) {
                 $isStatusOk = (strpos($status, '售') !== false || $status === 'active' || strpos($status, 'sale') !== false || strpos($status, 'Normal') !== false) && 
                                (strpos($status, '已售出') === false && strpos($status, 'Sold') === false);
                                
-                // Expiry Check (Safety: use server time)
+                // Expiry Check (v2.1.2: Strictly use server time)
                 $isOccupied = ($internalStatus === 'occupied');
                 $lastTime = isset($item['lastMatchedTime']) ? (float)$item['lastMatchedTime'] : 0;
-                $isExpired = $isOccupied && ($lastTime > 0) && ((time() * 1000) - $lastTime > $validityMs);
+                $isExpired = $isOccupied && ($lastTime > 0) && ($now - $lastTime > $validityMs);
 
                 if ($isStatusOk && ($internalStatus === 'idle' || $isExpired)) {
                     // Priority 1: Exact Price Match
