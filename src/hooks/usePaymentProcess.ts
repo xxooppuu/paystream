@@ -130,17 +130,16 @@ export const usePaymentProcess = () => {
             const sellerAccount = currAccounts.find(a => a.id === item.accountId);
             if (!sellerAccount) throw new Error('卖家账号异常');
 
+            const cents = Math.round(amount * 100);
             const changePriceRes = await fetch(getApiUrl('proxy'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    targetUrl: 'https://app.zhuanzhuan.com/zz/transfer/modifyProductPrice',
-                    method: 'POST',
-                    cookie: sellerAccount.cookie,
-                    body: `productId=${item.id}&price=${amount * 100}`,
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+                    targetUrl: `https://app.zhuanzhuan.com/zzopen/c2b_consignment/changePrice?argueSwitch=true&buyPrice=0&orderId=${item.id}&infoPrice=${cents}&infoShowPrice=${cents}&selectedFastWithdrawService=0`,
+                    method: 'GET',
+                    cookie: sellerAccount.cookie
                 })
-            });
+            })
 
             // v1.8.9: Robust JSON parsing to handle HTML/Proxy errors gracefully
             let priceData;
@@ -161,7 +160,9 @@ export const usePaymentProcess = () => {
                 throw new Error(`改价请求异常: ${e.message}`);
             }
 
-            if (priceData.respCode !== '0') throw new Error(priceData.respMsg || '改价失败');
+            if (priceData.respCode !== '0' && priceData.respData?.optResult !== true) {
+                throw new Error(priceData.respMsg || priceData.errorMsg || '改价失败');
+            }
             addLog('改价成功');
 
             // 3. Create Order
