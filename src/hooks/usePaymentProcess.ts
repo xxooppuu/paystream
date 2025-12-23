@@ -176,7 +176,51 @@ export const usePaymentProcess = () => {
                 ? buyers.find((b: any) => b.id === specificBuyerId)
                 : buyers.find((b: any) => b.status === '正常' || b.status === undefined);
 
-            if (!buyer) throw new Error('可用买家账号不足');
+            if (!item.infoId) throw new Error('商品信息不完整(infoId缺失)，请联系管理员刷新库存');
+
+            // Construct Complex Payload
+            const productStr = JSON.stringify([{
+                channelId: "",
+                metric: "",
+                payType: "0",
+                serviceList: ["40"],
+                infoNum: "1",
+                infoId: item.infoId
+            }]);
+
+            const deliveryInfos = JSON.stringify([{
+                infoId: item.infoId,
+                deliveryInfo: {
+                    deliveryMethodId: "1",
+                    versionId: "0"
+                }
+            }]);
+
+            const params = new URLSearchParams();
+            params.append('apiVersion', 'V3_INSURANCE_SERVICE');
+            params.append('payActionType', '1');
+            params.append('mutiProduct', '1');
+            params.append('payType', '0');
+            params.append('supportCent', '1');
+            params.append('addressId', buyer.addressId || '');
+            params.append('productStr', productStr);
+            params.append('buyerRemark', '');
+            params.append('packIds', '[]');
+            params.append('saleIds', '[]');
+            params.append('deliveryInfos', deliveryInfos);
+            params.append('tradeType', '0');
+            params.append('captureState', '-1');
+            params.append('infoId', item.infoId);
+            params.append('infoNum', '');
+            params.append('init_from', 'G1001_yxyl_diamond_5820_4'); // From demo log
+            params.append('metric', '');
+            params.append('requestOrigin', '');
+            params.append('stagingId', '');
+            params.append('whetherShowPosteriorQcStyle', '0');
+
+            // Legacy/Redundant params just in case, or allow URLSearchParams to handle body
+            // The Proxy expects `body` string in the JSON payload
+            const formDataBody = params.toString();
 
             const orderRes = await fetch(getApiUrl('proxy'), {
                 method: 'POST',
@@ -185,8 +229,8 @@ export const usePaymentProcess = () => {
                     targetUrl: 'https://app.zhuanzhuan.com/zz/transfer/createOrder',
                     method: 'POST',
                     cookie: buyer.cookie,
-                    body: `productId=${item.id}&price=${amount * 100}&addressId=${buyer.addressId || ''}`,
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+                    body: formDataBody,
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8' }
                 })
             });
 
