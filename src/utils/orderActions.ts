@@ -16,7 +16,7 @@ export const performOrderCancellation = async (orderId: string, buyerId: string)
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                targetUrl: 'https://app.zhuanzhuan.com/zzx/transfer/cancelOrder',
+                targetUrl: 'https://app.zhuanzhuan.com/zz/transfer/cancelOrder',
                 method: 'POST',
                 cookie: buyer.cookie,
                 body: `cancelReason=不想要了&subCancelReason=&orderId=${orderId}`,

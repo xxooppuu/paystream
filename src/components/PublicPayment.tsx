@@ -62,7 +62,7 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
             const duration = Number(settings.validityDuration);
             const timer = setInterval(() => {
                 const now = Date.now();
-                const elapsedSeconds = Math.floor((now - orderCreatedAt) / 1000);
+                const elapsedSeconds = Math.floor((now - new Date(orderCreatedAt).getTime()) / 1000);
                 const remaining = duration - elapsedSeconds;
 
                 if (remaining <= 0) {
@@ -199,7 +199,7 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
         try {
             const info = await startPayment(adjustedAmount);
             if (info) {
-                setOrderInfo(info);
+                setOrderInfo({ internalOrderId: info.id, amount: info.amount });
                 await saveIpLog(); // Successfully generated order, log it
                 await checkIpLimit(true); // Silent refresh count displayed in footer
             }
@@ -460,7 +460,7 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
                     )}
 
                     <div className="absolute bottom-4 left-0 right-0 text-center text-[10px] text-slate-300 pointer-events-none space-y-1">
-                        <div>PayStream v1.8.9 (Status Protected: {new Date().toLocaleTimeString()})</div>
+                        <div>PayStream v1.9.0 (Path Corrected: {new Date().toLocaleTimeString()})</div>
                         {visitorIp && (
                             <div className="opacity-50">
                                 IP: {visitorIp} {ipUsage ? ` / ${ipUsage}` : ''} / SYNC: {Math.abs(clockDrift) > 1000 ? 'ADJ' : 'OK'}

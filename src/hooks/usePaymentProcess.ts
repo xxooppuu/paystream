@@ -134,7 +134,7 @@ export const usePaymentProcess = () => {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    targetUrl: 'https://app.zhuanzhuan.com/zzx/transfer/modifyProductPrice',
+                    targetUrl: 'https://app.zhuanzhuan.com/zz/transfer/modifyProductPrice',
                     method: 'POST',
                     cookie: sellerAccount.cookie,
                     body: `productId=${item.id}&price=${amount * 100}`,
@@ -181,7 +181,7 @@ export const usePaymentProcess = () => {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    targetUrl: 'https://app.zhuanzhuan.com/zzx/transfer/createOrder',
+                    targetUrl: 'https://app.zhuanzhuan.com/zz/transfer/createOrder',
                     method: 'POST',
                     cookie: buyer.cookie,
                     body: `productId=${item.id}&price=${amount * 100}&addressId=${buyer.addressId || ''}`,
