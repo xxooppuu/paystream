@@ -9,7 +9,7 @@
  */
 
 // Version Configuration
-define('APP_VERSION', 'v2.2.0-MySQL');
+define('APP_VERSION', 'v2.2.1-MySQL');
 
 // Prevent any output before headers
 ob_start();
@@ -95,13 +95,23 @@ function is_system_installed() {
     global $baseDir;
     $configFile = $baseDir . '/db_config.php';
     
+    // If no config file, definitely not installed
     if (!file_exists($configFile)) return false;
     
     try {
         $db = DB::getInstance();
         $stmt = $db->query("SHOW TABLES LIKE 'settings'");
-        return $stmt->fetch() !== false;
+        $hasSettings = $stmt->fetch() !== false;
+        
+        // Also check if settings table has data
+        if ($hasSettings) {
+            $count = $db->fetchOne("SELECT COUNT(*) as cnt FROM settings");
+            return $count && $count['cnt'] > 0;
+        }
+        return false;
     } catch (Exception $e) {
+        // If connection fails or query fails, not installed
+        error_log("Installation check failed: " . $e->getMessage());
         return false;
     }
 }

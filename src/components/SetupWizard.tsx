@@ -112,7 +112,7 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ onComplete }) => {
                     <div className="inline-flex items-center justify-center p-3 bg-white/10 rounded-xl mb-4">
                         <ShieldCheck className="w-10 h-10" />
                     </div>
-                    <h1 className="text-2xl font-bold">PayStream v2.2.0-MySQL</h1>
+                    <h1 className="text-2xl font-bold">PayStream v2.2.1-MySQL</h1>
                     <p className="text-blue-100 mt-2">系统初始化向导 (MySQL 数据库)</p>
                 </div>
 
