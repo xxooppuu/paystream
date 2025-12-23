@@ -833,6 +833,12 @@ function performSetup($adminPassword) {
                 type TEXT,
                 timestamp INTEGER
             );
+            CREATE TABLE IF NOT EXISTS buyers (
+                id TEXT PRIMARY KEY,
+                cookie TEXT,
+                remark TEXT,
+                lastUpdated TEXT
+            );
             CREATE INDEX IF NOT EXISTS idx_orders_internal ON orders(internalOrderId);
             CREATE INDEX IF NOT EXISTS idx_inventory_shop ON inventory(shopId);
         ");
@@ -906,6 +912,24 @@ function performSetup($adminPassword) {
             }
         }
 
+        // Buyers
+        $buyersFile = $baseDir . '/buyers.json';
+        if (file_exists($buyersFile)) {
+            $data = json_decode(file_get_contents($buyersFile), true);
+            if (is_array($data)) {
+                $stmt = $pdo->prepare("INSERT OR REPLACE INTO buyers (id, cookie, remark, lastUpdated) VALUES (?, ?, ?, ?)");
+                foreach ($data as $b) {
+                    $stmt->execute([
+                        $b['id'], 
+                        isset($b['cookie']) ? $b['cookie'] : null,
+                        isset($b['remark']) ? $b['remark'] : null,
+                        isset($b['lastUpdated']) ? $b['lastUpdated'] : null
+                    ]);
+                }
+                $migrated[] = "buyers";
+            }
+        }
+
         return ['success' => true, 'migrated' => $migrated];
     } catch (PDOException $e) {
         return ['success' => false, 'error' => $e->getMessage()];
@@ -938,7 +962,27 @@ try {
             }
             break;
         case 'buyers':
-            handleFileRequest('buyers.json'); // Buyers can stay on JSON for now or move to SQLite later
+            $db = DB::getInstance();
+            if ($method === 'GET') {
+                jsonResponse($db->fetchAll("SELECT * FROM buyers"));
+            } else {
+                $input = json_decode(file_get_contents('php://input'), true);
+                if (is_array($input)) {
+                    $pdo = $db->getConnection();
+                    $pdo->beginTransaction();
+                    $stmt = $pdo->prepare("INSERT OR REPLACE INTO buyers (id, cookie, remark, lastUpdated) VALUES (?, ?, ?, ?)");
+                    foreach ($input as $b) {
+                        $stmt->execute([
+                            $b['id'], 
+                            isset($b['cookie']) ? $b['cookie'] : null,
+                            isset($b['remark']) ? $b['remark'] : null,
+                            isset($b['lastUpdated']) ? $b['lastUpdated'] : null
+                        ]);
+                    }
+                    $pdo->commit();
+                    jsonResponse(['success' => true]);
+                }
+            }
             break;
         case 'orders':
             proactiveCleanup(); 
