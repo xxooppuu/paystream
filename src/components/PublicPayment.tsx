@@ -163,19 +163,10 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
     const saveIpLog = async () => {
         if (!visitorIp) return;
         try {
-            const res = await fetch(getApiUrl('ip_logs'));
-            const allLogs = res.ok ? await res.json() : [];
-            const newLog = { ip: visitorIp, pageId, timestamp: Date.now() + clockDrift };
-            const updated = Array.isArray(allLogs) ? [...allLogs, newLog] : [newLog];
-
-            // Filter old logs (> 24h) to keep file small
-            const oneDayAgo = (Date.now() + clockDrift) - 24 * 60 * 60 * 1000;
-            const filtered = updated.filter(l => l.timestamp > oneDayAgo);
-
-            await fetch(getApiUrl('ip_logs'), {
+            await fetch(getApiUrl('add_ip_log'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(filtered)
+                body: JSON.stringify({ pageId })
             });
         } catch (e) {
             console.error("Failed to save IP log", e);
@@ -479,7 +470,7 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
                     })()}
 
                     <div className="absolute bottom-4 left-0 right-0 text-center text-[10px] text-slate-300 pointer-events-none space-y-1">
-                        <div>PayStream v2.1.3 (Stability: {new Date().toLocaleTimeString()})</div>
+                        <div>PayStream v2.1.6 (FIFO-Sync: {new Date().toLocaleTimeString()})</div>
                         {visitorIp && (
                             <div className="opacity-50">
                                 IP: {visitorIp} {ipUsage ? ` / ${ipUsage}` : ''} / SYNC: {Math.abs(clockDrift) > 1000 ? 'ADJ' : 'OK'}

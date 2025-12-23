@@ -1,1 +1,1 @@
-PayStream v2.1.5 - FIFO QUEUE & COMPOSITE LOCK (Hardcore Concurrency Fix)
+PayStream v2.1.6 - FIFO Accuracy & IP Limit Fix (ClientId based)

@@ -218,17 +218,17 @@ function atomicAppend($filename, $newItem) {
 }
 
 /**
- * v2.1.5: Register a waiter in FIFO queue and check if they are the first.
- * Prevents "sniping" where a late-comer grabs a freshly released item before the oldest waiter.
+ * v2.1.6: Register a waiter in FIFO queue using ClientId instead of IP.
+ * This allows multiple tabs/windows on the same machine to have independent queue spots.
  */
-function registerAndCheckPriority($price, $ip) {
+function registerAndCheckPriority($price, $clientId) {
     global $baseDir;
     $filePath = $baseDir . '/waiters.json';
     $now = time();
-    $timeout = 45; // 45 seconds timeout for a waiter entry
+    $timeout = 45; // 45 seconds timeout
     
     $fp = fopen($filePath, 'c+b');
-    if (!$fp) return true; // Fallback to competitive mode if file error
+    if (!$fp) return true;
     
     $isFirst = false;
     if (flock($fp, LOCK_EX)) {
@@ -240,22 +240,22 @@ function registerAndCheckPriority($price, $ip) {
         $priceKey = (string)$price;
         if (!isset($waiters[$priceKey])) $waiters[$priceKey] = [];
         
-        // 1. Cleanup expired waiters
+        // 1. Cleanup expired
         foreach ($waiters as $pk => &$list) {
-            foreach ($list as $pip => $ts) {
-                if ($now - $ts > $timeout) unset($list[$pip]);
+            foreach ($list as $cid => $ts) {
+                if ($now - $ts > $timeout) unset($list[$cid]);
             }
         }
         
-        // 2. Add/Update current waiter
-        if (!isset($waiters[$priceKey][$ip])) {
-            $waiters[$priceKey][$ip] = $now;
+        // 2. Add/Update
+        if (!isset($waiters[$priceKey][$clientId])) {
+            $waiters[$priceKey][$clientId] = $now;
         }
         
-        // 3. Check if first (FIFO: Oldest timestamp is first)
-        asort($waiters[$priceKey]); // Sort by timestamp asc
-        $ips = array_keys($waiters[$priceKey]);
-        if (isset($ips[0]) && $ips[0] === $ip) {
+        // 3. FIFO Sort
+        asort($waiters[$priceKey]);
+        $ids = array_keys($waiters[$priceKey]);
+        if (isset($ids[0]) && $ids[0] === $clientId) {
             $isFirst = true;
         }
         
@@ -269,10 +269,7 @@ function registerAndCheckPriority($price, $ip) {
     return $isFirst;
 }
 
-/**
- * v2.1.5: Remve a waiter from the queue once matched
- */
-function unregisterWaiter($price, $ip) {
+function unregisterWaiter($price, $clientId) {
     global $baseDir;
     $filePath = $baseDir . '/waiters.json';
     if (!file_exists($filePath)) return;
@@ -280,8 +277,8 @@ function unregisterWaiter($price, $ip) {
     if ($fp && flock($fp, LOCK_EX)) {
         rewind($fp);
         $waiters = json_decode(stream_get_contents($fp), true);
-        if (is_array($waiters) && isset($waiters[(string)$price][$ip])) {
-            unset($waiters[(string)$price][$ip]);
+        if (is_array($waiters) && isset($waiters[(string)$price][$clientId])) {
+            unset($waiters[(string)$price][$clientId]);
             ftruncate($fp, 0);
             rewind($fp);
             fwrite($fp, json_encode($waiters));
@@ -292,6 +289,42 @@ function unregisterWaiter($price, $ip) {
 }
 
 /**
+ * v2.1.6: Server-side Atomic IP Logger to fix "Invalid IP Limit" caused by client-side race conditions.
+ */
+function atomicAddIpLog($ip, $pageId) {
+    global $baseDir;
+    $filePath = $baseDir . '/ip_logs.json';
+    $fp = fopen($filePath, 'c+b');
+    if (!$fp) return;
+    if (flock($fp, LOCK_EX)) {
+        rewind($fp);
+        $content = stream_get_contents($fp);
+        $logs = json_decode($content, true);
+        if (!is_array($logs)) $logs = [];
+        
+        $now = time() * 1000;
+        $logs[] = [
+            'ip' => $ip,
+            'pageId' => $pageId,
+            'timestamp' => $now
+        ];
+        
+        // Keep only last 24h
+        $cutoff = $now - (24 * 60 * 60 * 1000);
+        $logs = array_filter($logs, function($l) use ($cutoff) {
+            return $l['timestamp'] > $cutoff;
+        });
+        
+        ftruncate($fp, 0);
+        rewind($fp);
+        fwrite($fp, json_encode(array_values($logs), JSON_UNESCAPED_UNICODE));
+        fflush($fp);
+        flock($fp, LOCK_UN);
+    }
+    fclose($fp);
+}
+
+/**
  * Atomically finds and locks an inventory item.
  * v1.8.0 Hardened: Accepts filter criteria
  */
@@ -299,9 +332,9 @@ function matchAndLockItem($targetPrice, $matchedTime, $filters = []) {
     global $baseDir;
     $filePath = $baseDir . '/shops.json';
     
-    // v2.1.5: FIFO Queue Check
-    $ip = getClientIp();
-    $isFirst = registerAndCheckPriority($targetPrice, $ip);
+    // v2.1.6: FIFO Queue Check via ClientID
+    $clientId = isset($filters['clientId']) ? (string)$filters['clientId'] : getClientIp();
+    $isFirst = registerAndCheckPriority($targetPrice, $clientId);
     if (!$isFirst) {
         return "您正在排队等待中，请稍后... (排队顺序受保护)";
     }
@@ -400,8 +433,8 @@ function matchAndLockItem($targetPrice, $matchedTime, $filters = []) {
             flock($fp, LOCK_UN);
             fclose($fp);
             
-            // v2.1.5: Successfully locked, remove from queue
-            unregisterWaiter($targetPrice, $ip);
+            // v2.1.6: Successfully locked, remove from queue using clientId
+            unregisterWaiter($targetPrice, $clientId);
             
             return [
                 'item' => $finalMatchedItem,
@@ -688,6 +721,11 @@ try {
             $input = json_decode(file_get_contents('php://input'), true);
             if (!$input) jsonResponse(['error' => 'Invalid data'], 400);
             
+            // v2.1.6: Auto-Unregister Waiter just in case
+            if (isset($input['amount']) && isset($input['clientId'])) {
+                unregisterWaiter($input['amount'], $input['clientId']);
+            }
+            
             // v2.1.4: Secondary Hardcore Validation before adding order
             if (isset($input['lockTicket']) && isset($input['inventoryId']) && isset($input['accountId'])) {
                 $shopsFile = $baseDir . '/shops.json';
@@ -769,6 +807,15 @@ try {
                 jsonResponse(['error' => $res], 500);
             }
             break;
+        case 'add_ip_log':
+            if ($_SERVER['REQUEST_METHOD'] !== 'POST') jsonResponse(['error' => 'POST required'], 405);
+            $input = json_decode(file_get_contents('php://input'), true);
+            if (!$input || !isset($input['pageId'])) jsonResponse(['error' => 'Invalid data'], 400);
+            
+            atomicAddIpLog(getClientIp(), $input['pageId']);
+            jsonResponse(['success' => true]);
+            break;
+
         case 'get_ip':
             jsonResponse([
                 'ip' => getClientIp(),

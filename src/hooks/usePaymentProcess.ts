@@ -18,6 +18,14 @@ export const usePaymentProcess = () => {
     const [freshAccounts, setAccounts] = useState<StoreAccount[]>([]);
     const [paymentLink, setPaymentLink] = useState<string>('');
     const [lockTicket, setLockTicket] = useState<string | null>(null);
+    const [clientId] = useState(() => {
+        let id = sessionStorage.getItem('pay_client_id');
+        if (!id) {
+            id = 'C' + Math.random().toString(36).substring(2, 15);
+            sessionStorage.setItem('pay_client_id', id);
+        }
+        return id;
+    });
     const [settings, setSettings] = useState<any>(null);
 
     const addLog = (msg: string) => {
@@ -63,7 +71,8 @@ export const usePaymentProcess = () => {
                         filters: {
                             specificShopId: freshSettings?.productMode === 'shop' ? freshSettings?.specificShopId : null,
                             excludeIds: excludeIds,
-                            validityDuration: freshSettings?.validityDuration || 180
+                            validityDuration: freshSettings?.validityDuration || 180,
+                            clientId: clientId
                         }
                     })
                 });
@@ -348,7 +357,8 @@ export const usePaymentProcess = () => {
                     ...newOrder,
                     lockTicket: lockTicket,
                     inventoryId: item.id,
-                    accountId: item.accountId
+                    accountId: item.accountId,
+                    clientId: clientId
                 })
             });
 

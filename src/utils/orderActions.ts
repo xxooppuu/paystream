@@ -42,7 +42,7 @@ export const releaseInventory = async (inventoryId: string | undefined, accountI
     if (!inventoryId) return;
 
     try {
-        // v2.1.5: Atomic Release via Backend with accountId for precision
+        // v2.1.6: Atomic Release via Backend with accountId for precision
         await fetch(getApiUrl('release_inventory'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
