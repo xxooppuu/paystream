@@ -9,7 +9,7 @@
  */
 
 // Version Configuration
-define('APP_VERSION', 'v2.1.8-SQL');
+define('APP_VERSION', 'v2.2.0-MySQL');
 
 // Prevent any output before headers
 ob_start();
@@ -41,14 +41,22 @@ class DB {
 
     private function __construct() {
         global $baseDir;
-        $dbFile = $baseDir . '/paystream.db';
+        $configFile = $baseDir . '/db_config.php';
+        
+        if (!file_exists($configFile)) {
+            throw new Exception('Database configuration not found');
+        }
+        
+        $config = require $configFile;
+        
         try {
-            $this->pdo = new PDO("sqlite:" . $dbFile);
+            $dsn = "mysql:host={$config['host']};port={$config['port']};dbname={$config['database']};charset={$config['charset']}";
+            $this->pdo = new PDO($dsn, $config['username'], $config['password']);
             $this->pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
             $this->pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+            $this->pdo->exec("SET NAMES '{$config['charset']}'");
         } catch (PDOException $e) {
-            // If DB doesn't exist yet, we only allow 'setup' and 'get_ip' acts
-            // This is handled in the check below
+            throw new Exception('MySQL Connection Failed: ' . $e->getMessage());
         }
     }
 
@@ -83,13 +91,15 @@ class DB {
 }
 
 // 1. Robust Installation Check
-$dbFile = $baseDir . '/paystream.db';
 function is_system_installed() {
-    global $dbFile;
-    if (!file_exists($dbFile) || filesize($dbFile) === 0) return false;
+    global $baseDir;
+    $configFile = $baseDir . '/db_config.php';
+    
+    if (!file_exists($configFile)) return false;
+    
     try {
-        $pdo = new PDO("sqlite:" . $dbFile);
-        $stmt = $pdo->query("SELECT name FROM sqlite_master WHERE type='table' AND name='settings'");
+        $db = DB::getInstance();
+        $stmt = $db->query("SHOW TABLES LIKE 'settings'");
         return $stmt->fetch() !== false;
     } catch (Exception $e) {
         return false;
@@ -98,7 +108,7 @@ function is_system_installed() {
 
 $isInstalled = is_system_installed();
 
-if (!$isInstalled && !in_array($act, ['setup', 'get_ip', 'check_setup'])) {
+if (!$isInstalled && !in_array($act, ['setup', 'get_ip', 'check_setup', 'test_db_connection'])) {
     jsonResponse(['status' => 'needs_setup', 'message' => 'System needs initialization'], 200);
 }
 
@@ -106,7 +116,7 @@ if (!$isInstalled && !in_array($act, ['setup', 'get_ip', 'check_setup'])) {
 try {
     $db = DB::getInstance();
 } catch (Exception $e) {
-    if (!in_array($act, ['setup', 'get_ip', 'check_setup'])) {
+    if (!in_array($act, ['setup', 'get_ip', 'check_setup', 'test_db_connection'])) {
         jsonResponse(['error' => 'Database connection failed: ' . $e->getMessage()], 500);
     }
 }
@@ -789,76 +799,98 @@ function getClientIp() {
    SETUP & MIGRATION
    --------------------------- */
 
-function performSetup($adminPassword) {
+function performSetup($adminPassword, $dbConfig) {
     global $baseDir;
-    $dbFile = $baseDir . '/paystream.db';
     
     try {
-        $pdo = new PDO("sqlite:" . $dbFile);
-        $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        // 1. Create db_config.php
+        $configContent = "<?php\nreturn [\n    'host' => '{$dbConfig['host']}',\n    'port' => '{$dbConfig['port']}',\n    'database' => '{$dbConfig['database']}',\n    'username' => '{$dbConfig['username']}',\n    'password' => '{$dbConfig['password']}',\n    'charset' => 'utf8mb4'\n];\n";
         
-        // 1. Create Tables
+        $configFile = $baseDir . '/db_config.php';
+        if (file_put_contents($configFile, $configContent) === false) {
+            return ['success' => false, 'error' => 'Failed to create config file'];
+        }
+        
+        // 2. Connect to MySQL
+        $dsn = "mysql:host={$dbConfig['host']};port={$dbConfig['port']};dbname={$dbConfig['database']};charset=utf8mb4";
+        $pdo = new PDO($dsn, $dbConfig['username'], $dbConfig['password']);
+        $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        $pdo->exec("SET NAMES 'utf8mb4'");
+        
+        // 3. Create Tables (MySQL Syntax)
         $pdo->exec("
             CREATE TABLE IF NOT EXISTS settings (
-                key TEXT PRIMARY KEY,
-                value TEXT
-            );
+                `key` VARCHAR(100) PRIMARY KEY,
+                `value` LONGTEXT
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            
             CREATE TABLE IF NOT EXISTS shops (
-                id TEXT PRIMARY KEY,
-                remark TEXT,
-                cookie TEXT,
-                csrfToken TEXT,
-                status TEXT,
-                lastUpdated TEXT
-            );
+                id VARCHAR(100) PRIMARY KEY,
+                remark VARCHAR(255),
+                cookie LONGTEXT,
+                csrfToken VARCHAR(255),
+                status VARCHAR(50),
+                lastUpdated VARCHAR(50),
+                INDEX idx_status (status)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            
             CREATE TABLE IF NOT EXISTS inventory (
-                id TEXT PRIMARY KEY,
-                shopId TEXT,
-                childOrderId TEXT,
-                orderId TEXT,
-                infoId TEXT,
-                parentTitle TEXT,
-                picUrl TEXT,
-                price TEXT,
-                priceNum INTEGER,
-                status TEXT,
-                internalStatus TEXT,
-                lastMatchedTime TEXT,
-                lockTicket TEXT,
-                FOREIGN KEY(shopId) REFERENCES shops(id)
-            );
+                id VARCHAR(100) PRIMARY KEY,
+                shopId VARCHAR(100),
+                childOrderId VARCHAR(100),
+                orderId VARCHAR(100),
+                infoId VARCHAR(100),
+                parentTitle VARCHAR(500),
+                picUrl VARCHAR(500),
+                price VARCHAR(50),
+                priceNum INT,
+                status VARCHAR(50),
+                internalStatus VARCHAR(50) DEFAULT 'idle',
+                lastMatchedTime VARCHAR(50),
+                lockTicket VARCHAR(100),
+                FOREIGN KEY (shopId) REFERENCES shops(id) ON DELETE CASCADE,
+                INDEX idx_shop (shopId),
+                INDEX idx_price (price),
+                INDEX idx_status (internalStatus)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            
             CREATE TABLE IF NOT EXISTS orders (
-                id TEXT PRIMARY KEY,
-                orderNo TEXT,
-                customer TEXT,
-                amount REAL,
-                currency TEXT,
-                status TEXT,
-                channel TEXT,
-                method TEXT,
-                createdAt TEXT,
-                inventoryId TEXT,
-                accountId TEXT,
-                buyerId TEXT,
-                internalOrderId TEXT
-            );
+                id VARCHAR(100) PRIMARY KEY,
+                orderNo VARCHAR(100),
+                customer VARCHAR(100),
+                amount DECIMAL(10,2),
+                currency VARCHAR(10) DEFAULT 'CNY',
+                status VARCHAR(50),
+                channel VARCHAR(50),
+                method VARCHAR(50),
+                createdAt VARCHAR(50),
+                inventoryId VARCHAR(100),
+                accountId VARCHAR(100),
+                buyerId VARCHAR(100),
+                internalOrderId VARCHAR(100),
+                INDEX idx_internal (internalOrderId),
+                INDEX idx_status (status),
+                INDEX idx_created (createdAt)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            
             CREATE TABLE IF NOT EXISTS ip_logs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                ip TEXT,
-                type TEXT,
-                timestamp INTEGER
-            );
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                ip VARCHAR(50),
+                type VARCHAR(50),
+                timestamp BIGINT,
+                INDEX idx_ip (ip),
+                INDEX idx_timestamp (timestamp)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            
             CREATE TABLE IF NOT EXISTS buyers (
-                id TEXT PRIMARY KEY,
-                cookie TEXT,
-                remark TEXT,
-                lastUpdated TEXT
-            );
-            CREATE INDEX IF NOT EXISTS idx_orders_internal ON orders(internalOrderId);
-            CREATE INDEX IF NOT EXISTS idx_inventory_shop ON inventory(shopId);
+                id VARCHAR(100) PRIMARY KEY,
+                cookie LONGTEXT,
+                remark VARCHAR(255),
+                lastUpdated VARCHAR(50)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
         ");
 
-        // 2. Migration from JSON
+        // 4. Migration from JSON
         $migrated = [];
         
         // Settings
@@ -866,7 +898,7 @@ function performSetup($adminPassword) {
         if (file_exists($settingsFile)) {
             $data = json_decode(file_get_contents($settingsFile), true);
             if (is_array($data)) {
-                $stmt = $pdo->prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)");
+                $stmt = $pdo->prepare("INSERT INTO settings (`key`, `value`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)");
                 foreach ($data as $k => $v) {
                     $stmt->execute([$k, is_scalar($v) ? $v : json_encode($v)]);
                 }
@@ -875,7 +907,7 @@ function performSetup($adminPassword) {
         }
         // Force set provided admin password if settings didn't have one
         if ($adminPassword) {
-            $stmt = $pdo->prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)");
+            $stmt = $pdo->prepare("INSERT INTO settings (`key`, `value`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)");
             $stmt->execute(['password', $adminPassword]);
         }
 
@@ -884,8 +916,8 @@ function performSetup($adminPassword) {
         if (file_exists($shopsFile)) {
             $data = json_decode(file_get_contents($shopsFile), true);
             if (is_array($data)) {
-                $stmtShop = $pdo->prepare("INSERT OR REPLACE INTO shops (id, remark, cookie, csrfToken, status, lastUpdated) VALUES (?, ?, ?, ?, ?, ?)");
-                $stmtInv = $pdo->prepare("INSERT OR REPLACE INTO inventory (id, shopId, childOrderId, orderId, infoId, parentTitle, picUrl, price, priceNum, status, internalStatus, lastMatchedTime, lockTicket) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                $stmtShop = $pdo->prepare("INSERT INTO shops (id, remark, cookie, csrfToken, status, lastUpdated) VALUES (?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE remark=VALUES(remark), cookie=VALUES(cookie), csrfToken=VALUES(csrfToken), status=VALUES(status), lastUpdated=VALUES(lastUpdated)");
+                $stmtInv = $pdo->prepare("INSERT INTO inventory (id, shopId, childOrderId, orderId, infoId, parentTitle, picUrl, price, priceNum, status, internalStatus, lastMatchedTime, lockTicket) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE shopId=VALUES(shopId), childOrderId=VALUES(childOrderId), orderId=VALUES(orderId), infoId=VALUES(infoId), parentTitle=VALUES(parentTitle), picUrl=VALUES(picUrl), price=VALUES(price), priceNum=VALUES(priceNum), status=VALUES(status), internalStatus=VALUES(internalStatus), lastMatchedTime=VALUES(lastMatchedTime), lockTicket=VALUES(lockTicket)");
                 
                 foreach ($data as $shop) {
                     $stmtShop->execute([$shop['id'], $shop['remark'], $shop['cookie'], $shop['csrfToken'], $shop['status'], $shop['lastUpdated']]);
@@ -910,7 +942,7 @@ function performSetup($adminPassword) {
         if (file_exists($ordersFile)) {
             $data = json_decode(file_get_contents($ordersFile), true);
             if (is_array($data)) {
-                $stmt = $pdo->prepare("INSERT OR REPLACE INTO orders (id, orderNo, customer, amount, currency, status, channel, method, createdAt, inventoryId, accountId, buyerId, internalOrderId) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                $stmt = $pdo->prepare("INSERT INTO orders (id, orderNo, customer, amount, currency, status, channel, method, createdAt, inventoryId, accountId, buyerId, internalOrderId) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE orderNo=VALUES(orderNo), customer=VALUES(customer), amount=VALUES(amount), currency=VALUES(currency), status=VALUES(status), channel=VALUES(channel), method=VALUES(method), createdAt=VALUES(createdAt), inventoryId=VALUES(inventoryId), accountId=VALUES(accountId), buyerId=VALUES(buyerId), internalOrderId=VALUES(internalOrderId)");
                 foreach ($data as $o) {
                     $stmt->execute([
                         $o['id'], isset($o['orderNo']) ? $o['orderNo'] : null, $o['customer'], $o['amount'],
@@ -932,7 +964,7 @@ function performSetup($adminPassword) {
         if (file_exists($buyersFile)) {
             $data = json_decode(file_get_contents($buyersFile), true);
             if (is_array($data)) {
-                $stmt = $pdo->prepare("INSERT OR REPLACE INTO buyers (id, cookie, remark, lastUpdated) VALUES (?, ?, ?, ?)");
+                $stmt = $pdo->prepare("INSERT INTO buyers (id, cookie, remark, lastUpdated) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE cookie=VALUES(cookie), remark=VALUES(remark), lastUpdated=VALUES(lastUpdated)");
                 foreach ($data as $b) {
                     $stmt->execute([
                         $b['id'], 
@@ -947,6 +979,8 @@ function performSetup($adminPassword) {
 
         return ['success' => true, 'migrated' => $migrated];
     } catch (PDOException $e) {
+        return ['success' => false, 'error' => 'MySQL Error: ' . $e->getMessage()];
+    } catch (Exception $e) {
         return ['success' => false, 'error' => $e->getMessage()];
     }
 }
@@ -964,10 +998,31 @@ try {
                 'status' => $isInstalled ? 'ok' : 'needs_setup'
             ]);
             break;
+        case 'test_db_connection':
+            $input = json_decode(file_get_contents('php://input'), true);
+            if (!$input || !isset($input['host']) || !isset($input['database']) || !isset($input['username'])) {
+                jsonResponse(['success' => false, 'error' => 'Missing required parameters'], 400);
+            }
+            
+            try {
+                $dsn = \"mysql:host={$input['host']};port={$input['port']};dbname={$input['database']};charset=utf8mb4\";
+                $testPdo = new PDO($dsn, $input['username'], $input['password']);
+                $testPdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+                jsonResponse(['success' => true, 'message' => 'Connection successful']);
+            } catch (PDOException $e) {
+                jsonResponse(['success' => false, 'error' => 'Connection failed: ' . $e->getMessage()], 500);
+            }
+            break;
         case 'setup':
             $input = json_decode(file_get_contents('php://input'), true);
             $password = isset($input['password']) ? $input['password'] : null;
-            $res = performSetup($password);
+            $dbConfig = isset($input['dbConfig']) ? $input['dbConfig'] : null;
+            
+            if (!$password || !$dbConfig) {
+                jsonResponse(['success' => false, 'error' => 'Missing password or database configuration'], 400);
+            }
+            
+            $res = performSetup($password, $dbConfig);
             jsonResponse($res);
             break;
         case 'shops':
