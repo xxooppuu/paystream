@@ -92,35 +92,39 @@ function handleFileRequest($filename, $default = []) {
 
             // v1.8.0: Smart Merge for ALL critical files
             if ($filename === 'shops.json' && is_array($oldData) && is_array($newData)) {
-                // v2.1.4: Enhanced Lock Protection using Composite Keys (AccountID + ItemID)
-                $lockMap = [];
+                // v2.1.5: Delta Protection Logic
+                // We want to update what Admin sent, but PRESERVE what server HAS (like locks)
+                $oldAccMap = [];
                 foreach ($oldData as $oldAccount) {
-                    $accId = isset($oldAccount['id']) ? (string)$oldAccount['id'] : 'unknown';
-                    if (!isset($oldAccount['inventory']) || !is_array($oldAccount['inventory'])) continue;
-                    foreach ($oldAccount['inventory'] as $oldItem) {
-                        if (isset($oldItem['internalStatus']) && $oldItem['internalStatus'] === 'occupied') {
-                            $compositeKey = $accId . '_' . (string)$oldItem['id'];
-                            $lockMap[$compositeKey] = $oldItem;
-                        }
-                    }
+                    $accId = (string)$oldAccount['id'];
+                    $oldAccMap[$accId] = $oldAccount;
                 }
+
                 foreach ($newData as &$newAccount) {
-                    $newAccId = isset($newAccount['id']) ? (string)$newAccount['id'] : 'unknown';
-                    if (!isset($newAccount['inventory']) || !is_array($newAccount['inventory'])) continue;
-                    foreach ($newAccount['inventory'] as &$newItem) {
-                        $compositeKey = $newAccId . '_' . (string)$newItem['id'];
-                        if (isset($lockMap[$compositeKey])) {
-                            // Preserve server-side lock state and ticket
-                            $newItem['internalStatus'] = $lockMap[$compositeKey]['internalStatus'];
-                            $newItem['lastMatchedTime'] = isset($lockMap[$compositeKey]['lastMatchedTime']) ? $lockMap[$compositeKey]['lastMatchedTime'] : null;
-                            if (isset($lockMap[$compositeKey]['lockTicket'])) {
-                                $newItem['lockTicket'] = $lockMap[$compositeKey]['lockTicket'];
+                    $newAccId = (string)$newAccount['id'];
+                    if (isset($oldAccMap[$newAccId])) {
+                        // Account exists. Merge inventory carefully.
+                        $oldInvMap = [];
+                        foreach ($oldAccMap[$newAccId]['inventory'] as $oi) {
+                            $oldInvMap[(string)$oi['id']] = $oi;
+                        }
+                        
+                        foreach ($newAccount['inventory'] as &$ni) {
+                            $niId = (string)$ni['id'];
+                            if (isset($oldInvMap[$niId])) {
+                                // Item exists. If it was occupied on server, KEEP IT OCCUPIED.
+                                if (isset($oldInvMap[$niId]['internalStatus']) && $oldInvMap[$niId]['internalStatus'] === 'occupied') {
+                                    $ni['internalStatus'] = 'occupied';
+                                    $ni['lastMatchedTime'] = $oldInvMap[$niId]['lastMatchedTime'];
+                                    $ni['lockTicket'] = isset($oldInvMap[$niId]['lockTicket']) ? $oldInvMap[$niId]['lockTicket'] : null;
+                                }
                             }
                         }
                     }
                 }
                 $input = json_encode($newData, JSON_UNESCAPED_UNICODE);
-            } else if ($filename === 'orders.json' && is_array($oldData) && is_array($newData)) {
+            }
+ else if ($filename === 'orders.json' && is_array($oldData) && is_array($newData)) {
                 // v1.8.0: Lossless Order Merge
                 // v1.8.9: Smart Status Protection (Prevent Stale Overwrites)
                 $orderMap = [];
@@ -214,6 +218,80 @@ function atomicAppend($filename, $newItem) {
 }
 
 /**
+ * v2.1.5: Register a waiter in FIFO queue and check if they are the first.
+ * Prevents "sniping" where a late-comer grabs a freshly released item before the oldest waiter.
+ */
+function registerAndCheckPriority($price, $ip) {
+    global $baseDir;
+    $filePath = $baseDir . '/waiters.json';
+    $now = time();
+    $timeout = 45; // 45 seconds timeout for a waiter entry
+    
+    $fp = fopen($filePath, 'c+b');
+    if (!$fp) return true; // Fallback to competitive mode if file error
+    
+    $isFirst = false;
+    if (flock($fp, LOCK_EX)) {
+        rewind($fp);
+        $content = stream_get_contents($fp);
+        $waiters = json_decode($content, true);
+        if (!is_array($waiters)) $waiters = [];
+        
+        $priceKey = (string)$price;
+        if (!isset($waiters[$priceKey])) $waiters[$priceKey] = [];
+        
+        // 1. Cleanup expired waiters
+        foreach ($waiters as $pk => &$list) {
+            foreach ($list as $pip => $ts) {
+                if ($now - $ts > $timeout) unset($list[$pip]);
+            }
+        }
+        
+        // 2. Add/Update current waiter
+        if (!isset($waiters[$priceKey][$ip])) {
+            $waiters[$priceKey][$ip] = $now;
+        }
+        
+        // 3. Check if first (FIFO: Oldest timestamp is first)
+        asort($waiters[$priceKey]); // Sort by timestamp asc
+        $ips = array_keys($waiters[$priceKey]);
+        if (isset($ips[0]) && $ips[0] === $ip) {
+            $isFirst = true;
+        }
+        
+        ftruncate($fp, 0);
+        rewind($fp);
+        fwrite($fp, json_encode($waiters));
+        fflush($fp);
+        flock($fp, LOCK_UN);
+    }
+    fclose($fp);
+    return $isFirst;
+}
+
+/**
+ * v2.1.5: Remve a waiter from the queue once matched
+ */
+function unregisterWaiter($price, $ip) {
+    global $baseDir;
+    $filePath = $baseDir . '/waiters.json';
+    if (!file_exists($filePath)) return;
+    $fp = fopen($filePath, 'c+b');
+    if ($fp && flock($fp, LOCK_EX)) {
+        rewind($fp);
+        $waiters = json_decode(stream_get_contents($fp), true);
+        if (is_array($waiters) && isset($waiters[(string)$price][$ip])) {
+            unset($waiters[(string)$price][$ip]);
+            ftruncate($fp, 0);
+            rewind($fp);
+            fwrite($fp, json_encode($waiters));
+        }
+        flock($fp, LOCK_UN);
+        fclose($fp);
+    }
+}
+
+/**
  * Atomically finds and locks an inventory item.
  * v1.8.0 Hardened: Accepts filter criteria
  */
@@ -221,6 +299,13 @@ function matchAndLockItem($targetPrice, $matchedTime, $filters = []) {
     global $baseDir;
     $filePath = $baseDir . '/shops.json';
     
+    // v2.1.5: FIFO Queue Check
+    $ip = getClientIp();
+    $isFirst = registerAndCheckPriority($targetPrice, $ip);
+    if (!$isFirst) {
+        return "您正在排队等待中，请稍后... (排队顺序受保护)";
+    }
+
     if (!file_exists($filePath)) return "shops.json not found";
     
     $fp = fopen($filePath, 'c+b');
@@ -314,6 +399,10 @@ function matchAndLockItem($targetPrice, $matchedTime, $filters = []) {
             fflush($fp);
             flock($fp, LOCK_UN);
             fclose($fp);
+            
+            // v2.1.5: Successfully locked, remove from queue
+            unregisterWaiter($targetPrice, $ip);
+            
             return [
                 'item' => $finalMatchedItem,
                 'account' => $finalMatchedAccount,
@@ -407,8 +496,9 @@ function atomicLockItem($inventoryId, $matchedTime) {
 
 /**
  * Atomically unlocks/releases an inventory item.
+ * v2.1.5: Added accountId for precise unlocking.
  */
-function atomicUnlockItem($inventoryId) {
+function atomicUnlockItem($inventoryId, $accountId = null) {
     global $baseDir;
     $filePath = $baseDir . '/shops.json';
     
@@ -435,6 +525,9 @@ function atomicUnlockItem($inventoryId) {
         $found = false;
         $targetId = (string)$inventoryId;
         foreach ($data as &$account) {
+            // v2.1.5: Match accountId if provided
+            if ($accountId && (string)$account['id'] !== (string)$accountId) continue;
+            
             if (!isset($account['inventory']) || !is_array($account['inventory'])) continue;
             foreach ($account['inventory'] as &$item) {
                 // Robust comparison (string vs numeric)
@@ -667,7 +760,9 @@ try {
             if ($_SERVER['REQUEST_METHOD'] !== 'POST') jsonResponse(['error' => 'POST required'], 405);
             $input = json_decode(file_get_contents('php://input'), true);
             if (!$input || !isset($input['id'])) jsonResponse(['error' => 'Invalid data'], 400);
-            $res = atomicUnlockItem($input['id']);
+            
+            // v2.1.5: Pass accountId for precise unlock
+            $res = atomicUnlockItem($input['id'], isset($input['accountId']) ? $input['accountId'] : null);
             if ($res === true) {
                 jsonResponse(['success' => true]);
             } else {

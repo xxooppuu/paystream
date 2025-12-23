@@ -38,17 +38,20 @@ export const performOrderCancellation = async (orderId: string, buyerId: string)
     }
 };
 
-export const releaseInventory = async (inventoryId: string | undefined) => {
+export const releaseInventory = async (inventoryId: string | undefined, accountId?: string) => {
     if (!inventoryId) return;
 
     try {
-        // v1.7.1: Atomic Release via Backend
+        // v2.1.5: Atomic Release via Backend with accountId for precision
         await fetch(getApiUrl('release_inventory'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id: inventoryId })
+            body: JSON.stringify({
+                id: inventoryId,
+                accountId: accountId
+            })
         });
-        console.log(`[Atomic] Inventory ${inventoryId} released.`);
+        console.log(`[Atomic] Inventory ${inventoryId} (Acc: ${accountId}) released.`);
     } catch (e) {
         console.error("Failed to release inventory", e);
     }

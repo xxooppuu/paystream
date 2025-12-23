@@ -271,7 +271,7 @@ export const Inventory: React.FC = () => {
 
             // v2.1.4: Execute Atomic Releases for each occupied item
             for (const item of occupiedItems) {
-                await releaseInventory(item.id);
+                await releaseInventory(item.id, item.accountId);
             }
 
             await saveShopsToBackend(accounts, releasedInventory);
@@ -312,7 +312,7 @@ export const Inventory: React.FC = () => {
         setInventory(updatedInventory);
 
         // v2.1.4: Use Atomic Release via Utility
-        await releaseInventory(item.id);
+        await releaseInventory(item.id, item.accountId);
 
         // Sync the rest of the accounts state if needed, though releaseInventory is more robust
         saveShopsToBackend(accounts, updatedInventory);

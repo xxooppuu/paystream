@@ -25,7 +25,7 @@ import { ViewState, Order, OrderStatus } from './types';
 import { getApiUrl, PROXY_URL } from './config';
 const App: React.FC = () => {
   useEffect(() => {
-    document.title = "PayStream Admin v2.1.4";
+    document.title = "PayStream Admin v2.1.5";
   }, []);
 
   // Check for Public Payment Route
@@ -156,7 +156,10 @@ const App: React.FC = () => {
       const res = await fetch(getApiUrl('release_inventory'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: order.inventoryId })
+        body: JSON.stringify({
+          id: order.inventoryId,
+          accountId: order.accountId
+        })
       });
 
       if (res.ok) {
@@ -575,7 +578,7 @@ const App: React.FC = () => {
           </div>
           {/* Version Footer */}
           <div className="fixed bottom-4 right-4 text-xs text-slate-400 bg-white px-3 py-1 rounded-full shadow-sm border border-slate-200">
-            Admin v2.1.4 (Concurrency Fix)
+            Admin v2.1.5 (FIFO Queue Fix)
           </div>
         </main>
       </div>
