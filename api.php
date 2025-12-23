@@ -29,6 +29,74 @@ $method = $_SERVER['REQUEST_METHOD'];
 $baseDir = __DIR__; // Store json files in the same directory
 
 /* ---------------------------
+   DATABASE & INITIALIZATION
+   --------------------------- */
+
+class DB {
+    private static $instance = null;
+    private $pdo;
+
+    private function __construct() {
+        global $baseDir;
+        $dbFile = $baseDir . '/paystream.db';
+        try {
+            $this->pdo = new PDO("sqlite:" . $dbFile);
+            $this->pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+            $this->pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+        } catch (PDOException $e) {
+            // If DB doesn't exist yet, we only allow 'setup' and 'get_ip' acts
+            // This is handled in the check below
+        }
+    }
+
+    public static function getInstance() {
+        if (self::$instance === null) {
+            self::$instance = new self();
+        }
+        return self::$instance;
+    }
+
+    public function getConnection() {
+        return $this->pdo;
+    }
+
+    public function query($sql, $params = []) {
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($params);
+        return $stmt;
+    }
+
+    public function fetchAll($sql, $params = []) {
+        return $this->query($sql, $params)->fetchAll();
+    }
+
+    public function fetchOne($sql, $params = []) {
+        return $this->query($sql, $params)->fetch();
+    }
+
+    public function lastInsertId() {
+        return $this->pdo->lastInsertId();
+    }
+}
+
+// 1. Installation Check
+$dbFile = $baseDir . '/paystream.db';
+$isInstalled = file_exists($dbFile);
+
+if (!$isInstalled && !in_array($act, ['setup', 'get_ip'])) {
+    jsonResponse(['status' => 'needs_setup', 'message' => 'System needs initialization'], 200);
+}
+
+// 2. Initialize DB if installed
+if ($isInstalled) {
+    try {
+        $db = DB::getInstance();
+    } catch (Exception $e) {
+        if ($act !== 'setup') jsonResponse(['error' => 'Database connection failed: ' . $e->getMessage()], 500);
+    }
+}
+
+/* ---------------------------
    HELPER FUNCTIONS
    --------------------------- */
 
@@ -172,49 +240,132 @@ function handleFileRequest($filename, $default = []) {
 }
 
 /**
- * Atomically appends a single item to a JSON array file.
+ * v2.1.8 SQLite Version: Atomically appends/updates an order.
  */
-function atomicAppend($filename, $newItem) {
-    global $baseDir;
-    $filePath = $baseDir . '/' . $filename;
-    
-    $fp = fopen($filePath, 'c+b');
-    if (!$fp) return "Could not open $filename for appending";
-    
-    if (flock($fp, LOCK_EX)) {
-        rewind($fp);
-        $content = stream_get_contents($fp);
+function atomicAppendOrder($orderData) {
+    try {
+        $db = DB::getInstance();
+        $sql = "INSERT OR REPLACE INTO orders (id, orderNo, customer, amount, currency, status, channel, method, createdAt, inventoryId, accountId, buyerId, internalOrderId) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
         
-        $data = json_decode($content, true);
-        if ($data === null && json_last_error() !== JSON_ERROR_NONE) {
-            // Fix encoding
-            if (function_exists('mb_convert_encoding')) {
-                $content = mb_convert_encoding($content, 'UTF-8', 'UTF-8,GBK,ISO-8859-1');
-                $data = json_decode($content, true);
+        $db->query($sql, [
+            $orderData['id'],
+            isset($orderData['orderNo']) ? $orderData['orderNo'] : null,
+            $orderData['customer'],
+            (float)$orderData['amount'],
+            isset($orderData['currency']) ? $orderData['currency'] : 'CNY',
+            $orderData['status'],
+            isset($orderData['channel']) ? $orderData['channel'] : 'Zhuanzhuan',
+            isset($orderData['method']) ? $orderData['method'] : 'WeChat',
+            $orderData['createdAt'],
+            isset($orderData['inventoryId']) ? $orderData['inventoryId'] : null,
+            isset($orderData['accountId']) ? $orderData['accountId'] : null,
+            isset($orderData['buyerId']) ? $orderData['buyerId'] : null,
+            isset($orderData['internalOrderId']) ? $orderData['internalOrderId'] : null
+        ]);
+        return true;
+    } catch (Exception $e) {
+        return $e->getMessage();
+    }
+}
+
+/**
+ * Reconstructs the nested shops/inventory JSON structure for the frontend.
+ */
+function getShopsData() {
+    try {
+        $db = DB::getInstance();
+        $shops = $db->fetchAll("SELECT * FROM shops");
+        foreach ($shops as &$shop) {
+            $shop['inventory'] = $db->fetchAll("SELECT * FROM inventory WHERE shopId = ?", [$shop['id']]);
+        }
+        return $shops;
+    } catch (Exception $e) {
+        return [];
+    }
+}
+
+/**
+ * Updates shops and inventory with smart lock preservation.
+ */
+function updateShopsData($newData) {
+    try {
+        $db = DB::getInstance();
+        $pdo = $db->getConnection();
+        $pdo->beginTransaction();
+
+        foreach ($newData as $shop) {
+            $db->query("INSERT OR REPLACE INTO shops (id, remark, cookie, csrfToken, status, lastUpdated) VALUES (?, ?, ?, ?, ?, ?)", [
+                $shop['id'], $shop['remark'], $shop['cookie'], $shop['csrfToken'], $shop['status'], $shop['lastUpdated']
+            ]);
+
+            if (isset($shop['inventory']) && is_array($shop['inventory'])) {
+                foreach ($shop['inventory'] as $item) {
+                    $existing = $db->fetchOne("SELECT internalStatus, lastMatchedTime, lockTicket FROM inventory WHERE id = ?", [$item['id']]);
+                    
+                    $internalStatus = isset($item['internalStatus']) ? $item['internalStatus'] : 'idle';
+                    $lastMatchedTime = isset($item['lastMatchedTime']) ? $item['lastMatchedTime'] : null;
+                    $lockTicket = isset($item['lockTicket']) ? $item['lockTicket'] : null;
+
+                    if ($existing && $existing['internalStatus'] === 'occupied') {
+                        $internalStatus = 'occupied';
+                        $lastMatchedTime = $existing['lastMatchedTime'];
+                        $lockTicket = $existing['lockTicket'];
+                    }
+
+                    $db->query("INSERT OR REPLACE INTO inventory (id, shopId, childOrderId, orderId, infoId, parentTitle, picUrl, price, priceNum, status, internalStatus, lastMatchedTime, lockTicket) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [
+                        $item['id'], $shop['id'], $item['childOrderId'], $item['orderId'], $item['infoId'],
+                        $item['parentTitle'], $item['picUrl'], $item['price'], $item['priceNum'],
+                        $item['status'], $internalStatus, $lastMatchedTime, $lockTicket
+                    ]);
+                }
             }
         }
-        
-        // v2.1.3: 再次验证，如果还是 null 且原文件有内容，说明解析彻底失败，报错以保护数据
-        if ($data === null && !empty($content) && json_last_error() !== JSON_ERROR_NONE) {
-            flock($fp, LOCK_UN);
-            fclose($fp);
-            return "JSON Corrupted (Error: " . json_last_error() . "). Order not appended to protect DB.";
-        }
-
-        if (!is_array($data)) $data = [];
-        
-        $data[] = $newItem;
-        
-        ftruncate($fp, 0);
-        rewind($fp);
-        fwrite($fp, json_encode($data, JSON_UNESCAPED_UNICODE));
-        fflush($fp);
-        flock($fp, LOCK_UN);
-        fclose($fp);
+        $pdo->commit();
         return true;
+    } catch (Exception $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        return $e->getMessage();
     }
-    fclose($fp);
-    return "Could not acquire lock for $filename";
+}
+
+/**
+ * Fetches all orders from SQLite.
+ */
+function getOrdersData() {
+    try {
+        $db = DB::getInstance();
+        return $db->fetchAll("SELECT * FROM orders ORDER BY createdAt DESC");
+    } catch (Exception $e) {
+        return [];
+    }
+}
+
+/**
+ * Settings helpers
+ */
+function getSettingsData() {
+    $db = DB::getInstance();
+    $rows = $db->fetchAll("SELECT * FROM settings");
+    $settings = [];
+    foreach ($rows as $row) {
+        $val = $row['value'];
+        $settings[$row['key']] = (strpos($val, '{') === 0 || strpos($val, '[') === 0) ? json_decode($val, true) : $val;
+    }
+    return (object)$settings;
+}
+
+function updateSettingsData($newData) {
+    try {
+        $db = DB::getInstance();
+        foreach ($newData as $k => $v) {
+            $val = is_scalar($v) ? $v : json_encode($v);
+            $db->query("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", [$k, $val]);
+        }
+        return true;
+    } catch (Exception $e) {
+        return $e->getMessage();
+    }
 }
 
 /**
@@ -291,37 +442,21 @@ function unregisterWaiter($price, $clientId) {
 /**
  * v2.1.6: Server-side Atomic IP Logger to fix "Invalid IP Limit" caused by client-side race conditions.
  */
+/**
+ * v2.1.8 SQLite Version: Server-side Atomic IP Logger
+ */
 function atomicAddIpLog($ip, $pageId) {
-    global $baseDir;
-    $filePath = $baseDir . '/ip_logs.json';
-    $fp = fopen($filePath, 'c+b');
-    if (!$fp) return;
-    if (flock($fp, LOCK_EX)) {
-        rewind($fp);
-        $content = stream_get_contents($fp);
-        $logs = json_decode($content, true);
-        if (!is_array($logs)) $logs = [];
-        
+    try {
+        $db = DB::getInstance();
         $now = time() * 1000;
-        $logs[] = [
-            'ip' => $ip,
-            'pageId' => $pageId,
-            'timestamp' => $now
-        ];
+        $db->query("INSERT INTO ip_logs (ip, type, timestamp) VALUES (?, ?, ?)", [$ip, $pageId, $now]);
         
-        // Keep only last 24h
+        // Cleanup old logs (> 24h)
         $cutoff = $now - (24 * 60 * 60 * 1000);
-        $logs = array_filter($logs, function($l) use ($cutoff) {
-            return $l['timestamp'] > $cutoff;
-        });
-        
-        ftruncate($fp, 0);
-        rewind($fp);
-        fwrite($fp, json_encode(array_values($logs), JSON_UNESCAPED_UNICODE));
-        fflush($fp);
-        flock($fp, LOCK_UN);
+        $db->query("DELETE FROM ip_logs WHERE timestamp < ?", [$cutoff]);
+    } catch (Exception $e) {
+        error_log("IP logging failed: " . $e->getMessage());
     }
-    fclose($fp);
 }
 
 /**
@@ -332,125 +467,86 @@ function atomicAddIpLog($ip, $pageId) {
  * v2.1.7: Atomically finds and locks an inventory item based on FIFO position in orders.json.
  * Supports Top-N matching where N is the number of available items.
  */
+/**
+ * v2.1.8 SQLite Version: Atomically finds and locks an inventory item based on FIFO position.
+ */
 function matchAndLockItem($targetPrice, $internalOrderId, $filters = []) {
-    global $baseDir;
-    $shopsFile = $baseDir . '/shops.json';
-    $ordersFile = $baseDir . '/orders.json';
-    
-    if (!file_exists($shopsFile)) return "shops.json not found";
-    if (!file_exists($ordersFile)) return "orders.json not found";
-
-    // 1. Lock BOTH files to ensure absolute consistency
-    $sfp = fopen($shopsFile, 'c+b');
-    $ofp = fopen($ordersFile, 'c+b');
-    
-    if (flock($sfp, LOCK_EX) && flock($ofp, LOCK_EX)) {
-        $sContent = stream_get_contents($sfp);
-        $oContent = stream_get_contents($ofp);
-        
-        $shops = json_decode($sContent, true);
-        $orders = json_decode($oContent, true);
-        
-        if (!is_array($shops) || !is_array($orders)) {
-            flock($ofp, LOCK_UN); flock($sfp, LOCK_UN);
-            fclose($ofp); fclose($sfp);
-            return "Data structure invalid";
-        }
-
-        $now = time() * 1000;
+    try {
+        $db = DB::getInstance();
+        $pdo = $db->getConnection();
+        $now = time();
+        $nowMs = $now * 1000;
         $price = (float)$targetPrice;
+        
+        $pdo->beginTransaction();
 
-        // 2. Count Available Items
-        $availableItems = [];
+        // 1. Get Available Items (price match, idle or expired)
         $validityDuration = isset($filters['validityDuration']) ? (int)$filters['validityDuration'] : 180;
         $validityMs = $validityDuration * 1000;
         $specificShopId = isset($filters['specificShopId']) ? (string)$filters['specificShopId'] : null;
 
-        foreach ($shops as $accIdx => $account) {
-            if ($specificShopId && (string)$account['id'] !== $specificShopId) continue;
-            if (!isset($account['inventory'])) continue;
-            foreach ($account['inventory'] as $itemIdx => $item) {
-                if (abs((float)$item['price'] - $price) > 0.01) continue;
-                
-                $internalStatus = isset($item['internalStatus']) ? $item['internalStatus'] : 'idle';
-                $lastTime = isset($item['lastMatchedTime']) ? (float)$item['lastMatchedTime'] : 0;
-                $isExpired = ($internalStatus === 'occupied') && ($now - $lastTime > $validityMs);
-                
-                if ($internalStatus === 'idle' || $isExpired) {
-                    $availableItems[] = ['accIdx' => $accIdx, 'itemIdx' => $itemIdx, 'item' => $item];
-                }
-            }
-        }
-        $N = count($availableItems);
-
-        // 3. Check Queue Position in orders.json (status=queueing)
-        $queue = [];
-        foreach ($orders as $o) {
-            if (isset($o['status']) && (strtolower($o['status']) === 'queueing') && abs((float)$o['amount'] - $price) < 0.01) {
-                $queue[] = $o['id'];
-            }
+        $sql = "SELECT i.*, s.cookie, s.remark, s.csrfToken, s.status as shopStatus 
+                FROM inventory i 
+                JOIN shops s ON i.shopId = s.id 
+                WHERE abs(CAST(i.price AS REAL) - ?) < 0.01 
+                AND (i.internalStatus = 'idle' OR (i.internalStatus = 'occupied' AND (? - CAST(i.lastMatchedTime AS DECIMAL)) > ?))";
+        
+        $params = [$price, $nowMs, $validityMs];
+        if ($specificShopId) {
+            $sql .= " AND i.shopId = ?";
+            $params[] = $specificShopId;
         }
         
-        $pos = array_search($internalOrderId, $queue);
+        $availableItems = $db->fetchAll($sql, $params);
+        $N = count($availableItems);
+
+        // 2. Check Queue Position
+        $queue = $db->fetchAll("SELECT id FROM orders WHERE abs(amount - ?) < 0.01 AND status = 'queueing' ORDER BY createdAt ASC", [$price]);
+        $queueIds = array_column($queue, 'id');
+        $pos = array_search($internalOrderId, $queueIds);
+
         if ($pos === false) {
-            // If not in queueing list, user must create the pre-order first
-            flock($ofp, LOCK_UN); flock($sfp, LOCK_UN);
-            fclose($ofp); fclose($sfp);
+            $pdo->rollBack();
             return "请先创建排队订单 (ID: $internalOrderId)";
         }
 
         if ($pos >= $N) {
-            flock($ofp, LOCK_UN); flock($sfp, LOCK_UN);
-            fclose($ofp); fclose($sfp);
+            $pdo->rollBack();
             return "排队中，前方有 " . ($pos) . " 位，可用商品 " . $N . " 件";
         }
 
-        // 4. Perform Matching (We are in Top-N)
-        $match = $availableItems[0]; // Just take the first available one (or $availableItems[$pos] if we want stickiness)
-        $finalAccIdx = $match['accIdx'];
-        $finalItemIdx = $match['itemIdx'];
-        
+        // 3. Match and Lock
+        $match = $availableItems[0]; 
         $lockTicket = uniqid('LT_', true);
-        $shops[$finalAccIdx]['inventory'][$finalItemIdx]['internalStatus'] = 'occupied';
-        $shops[$finalAccIdx]['inventory'][$finalItemIdx]['lastMatchedTime'] = $now;
-        $shops[$finalAccIdx]['inventory'][$finalItemIdx]['lockTicket'] = $lockTicket;
-        
-        $finalMatchedItem = $shops[$finalAccIdx]['inventory'][$finalItemIdx];
-        $finalMatchedAccount = $shops[$finalAccIdx];
 
-        // 5. Update Status in orders.json from queueing to pending
-        $orderUpdated = false;
-        foreach ($orders as &$o) {
-            if ($o['id'] === $internalOrderId) {
-                $o['status'] = 'pending';
-                $o['inventoryId'] = $finalMatchedItem['id'];
-                $o['accountId'] = $finalMatchedAccount['id'];
-                $o['lockTicket'] = $lockTicket;
-                $orderUpdated = true;
-                break;
-            }
-        }
+        // Update Inventory
+        $db->query("UPDATE inventory SET internalStatus = 'occupied', lastMatchedTime = ?, lockTicket = ? WHERE id = ?", [
+            $nowMs, $lockTicket, $match['id']
+        ]);
 
-        // 6. Save BOTH
-        ftruncate($sfp, 0); rewind($sfp);
-        fwrite($sfp, json_encode($shops, JSON_UNESCAPED_UNICODE));
-        ftruncate($ofp, 0); rewind($ofp);
-        fwrite($ofp, json_encode($orders, JSON_UNESCAPED_UNICODE));
-        
-        flock($ofp, LOCK_UN); flock($sfp, LOCK_UN);
-        fclose($ofp); fclose($sfp);
+        // Update Order
+        $db->query("UPDATE orders SET status = 'pending', inventoryId = ?, accountId = ?, lockTicket = ? WHERE id = ?", [
+            $match['id'], $match['shopId'], $lockTicket, $internalOrderId
+        ]);
+
+        $pdo->commit();
 
         return [
-            'item' => $finalMatchedItem,
-            'account' => $finalMatchedAccount,
+            'item' => $match,
+            'account' => [
+                'id' => $match['shopId'],
+                'remark' => $match['remark'],
+                'cookie' => $match['cookie'],
+                'csrfToken' => $match['csrfToken'],
+                'status' => $match['shopStatus']
+            ],
             'lockTicket' => $lockTicket,
             'internalOrderId' => $internalOrderId
         ];
+    } catch (Exception $e) {
+        if (isset($pdo) && $pdo->inTransaction()) $pdo->rollBack();
+        return "数据库操作失败: " . $e->getMessage();
     }
-    
-    if ($ofp) fclose($ofp);
-    if ($sfp) fclose($sfp);
-    return "系统锁定等待超时，请稍后重试";
 }
         
         flock($fp, LOCK_UN);
@@ -607,81 +703,50 @@ function atomicUnlockItem($inventoryId, $accountId = null) {
  * Proactive cleanup: resets expired inventory locks and cancels old stale orders
  * v2.1.1 Enhanced Safety Net
  */
+/**
+ * Proactive cleanup: resets expired inventory locks and cancels old stale orders
+ * v2.1.8 SQLite Version
+ */
 function proactiveCleanup() {
-    global $baseDir;
-    
-    // 1. Cleanup Inventory Locks (occupied > 30 mins)
-    $shopsFile = $baseDir . '/shops.json';
-    if (file_exists($shopsFile)) {
-        $fp = fopen($shopsFile, 'c+b');
-        if (flock($fp, LOCK_EX)) {
-            $content = stream_get_contents($fp);
-            $data = json_decode($content, true);
-            $changed = false;
-            $now = time() * 1000;
-            $timeoutMs = 30 * 60 * 1000; // 30 mins
-            
-            if (is_array($data)) {
-                foreach ($data as &$account) {
-                    if (!isset($account['inventory']) || !is_array($account['inventory'])) continue;
-                    foreach ($account['inventory'] as &$item) {
-                        if (isset($item['internalStatus']) && $item['internalStatus'] === 'occupied') {
-                            $lastTime = isset($item['lastMatchedTime']) ? (float)$item['lastMatchedTime'] : 0;
-                            if ($lastTime > 0 && ($now - $lastTime > $timeoutMs)) {
-                                $item['internalStatus'] = 'idle';
-                                unset($item['lastMatchedTime']);
-                                unset($item['lockTicket']);
-                                $changed = true;
-                            }
-                        }
-                    }
-                }
-                if ($changed) {
-                    ftruncate($fp, 0);
-                    rewind($fp);
-                    fwrite($fp, json_encode($data, JSON_UNESCAPED_UNICODE));
-                }
-            }
-            flock($fp, LOCK_UN);
-        }
-        fclose($fp);
-    }
-    
-    // 2. Cleanup Old Pending Orders (pending > 1 hour)
-    $ordersFile = $baseDir . '/orders.json';
-    if (file_exists($ordersFile)) {
-        $fp = fopen($ordersFile, 'c+b');
-        if (flock($fp, LOCK_EX)) {
-            $content = stream_get_contents($fp);
-            $data = json_decode($content, true);
-            $changed = false;
-            $now = time();
-            $timeoutSec = 60 * 60; // 1 hour
-            
-            if (is_array($data)) {
-                foreach ($data as &$order) {
-                    $status = isset($order['status']) ? strtoupper($order['status']) : '';
-                    $createdAt = isset($order['createdAt']) ? strtotime($order['createdAt']) : 0;
-                    
-                    if ($status === 'PENDING' && $createdAt > 0 && ($now - $createdAt > $timeoutSec)) {
-                        $order['status'] = 'CANCELLED';
-                        $changed = true;
-                    }
-                    // v2.1.7: Cleanup stale QUEUEING orders (> 10 mins)
-                    if ($status === 'QUEUEING' && $createdAt > 0 && ($now - $createdAt > 600)) {
-                        $order['status'] = 'CANCELLED';
-                        $changed = true;
-                    }
-                }
-                if ($changed) {
-                    ftruncate($fp, 0);
-                    rewind($fp);
-                    fwrite($fp, json_encode($data, JSON_UNESCAPED_UNICODE));
-                }
-            }
-            flock($fp, LOCK_UN);
-        }
-        fclose($fp);
+    try {
+        $db = DB::getInstance();
+        $pdo = $db->getConnection();
+        $now = time();
+        $nowMs = $now * 1000;
+        
+        $pdo->beginTransaction();
+
+        // 1. Cleanup Inventory Locks (occupied > 30 mins)
+        $timeoutMs = 30 * 60 * 1000;
+        $pdo->prepare("
+            UPDATE inventory 
+            SET internalStatus = 'idle', lastMatchedTime = NULL, lockTicket = NULL 
+            WHERE internalStatus = 'occupied' 
+            AND CAST(lastMatchedTime AS DECIMAL) > 0 
+            AND (? - CAST(lastMatchedTime AS DECIMAL)) > ?
+        ")->execute([$nowMs, $timeoutMs]);
+
+        // 2. Cleanup Old Orders
+        // PENDING > 1 hour
+        $pdo->prepare("
+            UPDATE orders 
+            SET status = 'cancelled' 
+            WHERE UPPER(status) = 'PENDING' 
+            AND (strftime('%s', 'now') - strftime('%s', createdAt)) > 3600
+        ")->execute();
+
+        // QUEUEING > 10 mins
+        $pdo->prepare("
+            UPDATE orders 
+            SET status = 'cancelled' 
+            WHERE UPPER(status) = 'QUEUEING' 
+            AND (strftime('%s', 'now') - strftime('%s', createdAt)) > 600
+        ")->execute();
+
+        $pdo->commit();
+    } catch (Exception $e) {
+        if (isset($pdo) && $pdo->inTransaction()) $pdo->rollBack();
+        error_log("Proactive cleanup failed: " . $e->getMessage());
     }
 }
 
@@ -706,78 +771,222 @@ function getClientIp() {
 }
 
 /* ---------------------------
+   SETUP & MIGRATION
+   --------------------------- */
+
+function performSetup($adminPassword) {
+    global $baseDir;
+    $dbFile = $baseDir . '/paystream.db';
+    
+    try {
+        $pdo = new PDO("sqlite:" . $dbFile);
+        $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        
+        // 1. Create Tables
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT
+            );
+            CREATE TABLE IF NOT EXISTS shops (
+                id TEXT PRIMARY KEY,
+                remark TEXT,
+                cookie TEXT,
+                csrfToken TEXT,
+                status TEXT,
+                lastUpdated TEXT
+            );
+            CREATE TABLE IF NOT EXISTS inventory (
+                id TEXT PRIMARY KEY,
+                shopId TEXT,
+                childOrderId TEXT,
+                orderId TEXT,
+                infoId TEXT,
+                parentTitle TEXT,
+                picUrl TEXT,
+                price TEXT,
+                priceNum INTEGER,
+                status TEXT,
+                internalStatus TEXT,
+                lastMatchedTime TEXT,
+                lockTicket TEXT,
+                FOREIGN KEY(shopId) REFERENCES shops(id)
+            );
+            CREATE TABLE IF NOT EXISTS orders (
+                id TEXT PRIMARY KEY,
+                orderNo TEXT,
+                customer TEXT,
+                amount REAL,
+                currency TEXT,
+                status TEXT,
+                channel TEXT,
+                method TEXT,
+                createdAt TEXT,
+                inventoryId TEXT,
+                accountId TEXT,
+                buyerId TEXT,
+                internalOrderId TEXT
+            );
+            CREATE TABLE IF NOT EXISTS ip_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ip TEXT,
+                type TEXT,
+                timestamp INTEGER
+            );
+            CREATE INDEX IF NOT EXISTS idx_orders_internal ON orders(internalOrderId);
+            CREATE INDEX IF NOT EXISTS idx_inventory_shop ON inventory(shopId);
+        ");
+
+        // 2. Migration from JSON
+        $migrated = [];
+        
+        // Settings
+        $settingsFile = $baseDir . '/settings.json';
+        if (file_exists($settingsFile)) {
+            $data = json_decode(file_get_contents($settingsFile), true);
+            if (is_array($data)) {
+                $stmt = $pdo->prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)");
+                foreach ($data as $k => $v) {
+                    $stmt->execute([$k, is_scalar($v) ? $v : json_encode($v)]);
+                }
+                $migrated[] = "settings";
+            }
+        }
+        // Force set provided admin password if settings didn't have one
+        if ($adminPassword) {
+            $stmt = $pdo->prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)");
+            $stmt->execute(['password', $adminPassword]);
+        }
+
+        // Shops & Inventory
+        $shopsFile = $baseDir . '/shops.json';
+        if (file_exists($shopsFile)) {
+            $data = json_decode(file_get_contents($shopsFile), true);
+            if (is_array($data)) {
+                $stmtShop = $pdo->prepare("INSERT OR REPLACE INTO shops (id, remark, cookie, csrfToken, status, lastUpdated) VALUES (?, ?, ?, ?, ?, ?)");
+                $stmtInv = $pdo->prepare("INSERT OR REPLACE INTO inventory (id, shopId, childOrderId, orderId, infoId, parentTitle, picUrl, price, priceNum, status, internalStatus, lastMatchedTime, lockTicket) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                
+                foreach ($data as $shop) {
+                    $stmtShop->execute([$shop['id'], $shop['remark'], $shop['cookie'], $shop['csrfToken'], $shop['status'], $shop['lastUpdated']]);
+                    if (isset($shop['inventory']) && is_array($shop['inventory'])) {
+                        foreach ($shop['inventory'] as $item) {
+                            $stmtInv->execute([
+                                $item['id'], $shop['id'], $item['childOrderId'], $item['orderId'], $item['infoId'],
+                                $item['parentTitle'], $item['picUrl'], $item['price'], $item['priceNum'],
+                                $item['status'], isset($item['internalStatus']) ? $item['internalStatus'] : 'idle',
+                                isset($item['lastMatchedTime']) ? $item['lastMatchedTime'] : null,
+                                isset($item['lockTicket']) ? $item['lockTicket'] : null
+                            ]);
+                        }
+                    }
+                }
+                $migrated[] = "shops & inventory";
+            }
+        }
+
+        // Orders
+        $ordersFile = $baseDir . '/orders.json';
+        if (file_exists($ordersFile)) {
+            $data = json_decode(file_get_contents($ordersFile), true);
+            if (is_array($data)) {
+                $stmt = $pdo->prepare("INSERT OR REPLACE INTO orders (id, orderNo, customer, amount, currency, status, channel, method, createdAt, inventoryId, accountId, buyerId, internalOrderId) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                foreach ($data as $o) {
+                    $stmt->execute([
+                        $o['id'], isset($o['orderNo']) ? $o['orderNo'] : null, $o['customer'], $o['amount'],
+                        isset($o['currency']) ? $o['currency'] : 'CNY', $o['status'],
+                        isset($o['channel']) ? $o['channel'] : 'Zhuanzhuan',
+                        isset($o['method']) ? $o['method'] : 'WeChat',
+                        $o['createdAt'], isset($o['inventoryId']) ? $o['inventoryId'] : null,
+                        isset($o['accountId']) ? $o['accountId'] : null,
+                        isset($o['buyerId']) ? $o['buyerId'] : null,
+                        isset($o['internalOrderId']) ? $o['internalOrderId'] : null
+                    ]);
+                }
+                $migrated[] = "orders";
+            }
+        }
+
+        return ['success' => true, 'migrated' => $migrated];
+    } catch (PDOException $e) {
+        return ['success' => false, 'error' => $e->getMessage()];
+    }
+}
+
+/* ---------------------------
    ROUTER
    --------------------------- */
 
 try {
     switch ($act) {
+        case 'check_setup':
+            jsonResponse(['installed' => $isInstalled]);
+            break;
+        case 'setup':
+            $input = json_decode(file_get_contents('php://input'), true);
+            $password = isset($input['password']) ? $input['password'] : null;
+            $res = performSetup($password);
+            jsonResponse($res);
+            break;
         case 'shops':
-            proactiveCleanup(); // Ensure stale locks are released before viewing
-            handleFileRequest('shops.json');
+            proactiveCleanup(); 
+            if ($method === 'GET') {
+                jsonResponse(getShopsData());
+            } else {
+                $input = json_decode(file_get_contents('php://input'), true);
+                $res = updateShopsData($input);
+                jsonResponse(['success' => $res === true, 'error' => $res !== true ? $res : null]);
+            }
             break;
         case 'buyers':
-            handleFileRequest('buyers.json');
+            handleFileRequest('buyers.json'); // Buyers can stay on JSON for now or move to SQLite later
             break;
         case 'orders':
-            proactiveCleanup(); // Ensure stale orders are cancelled before viewing
-            handleFileRequest('orders.json');
+            proactiveCleanup(); 
+            if ($method === 'GET') {
+                jsonResponse(getOrdersData());
+            } else {
+                $input = json_decode(file_get_contents('php://input'), true);
+                if (is_array($input)) {
+                    foreach ($input as $o) atomicAppendOrder($o);
+                    jsonResponse(['success' => true]);
+                } else if ($input) {
+                    $res = atomicAppendOrder($input);
+                    jsonResponse(['success' => $res === true, 'error' => $res !== true ? $res : null]);
+                }
+            }
             break;
         case 'settings':
-            handleFileRequest('settings.json', (object)[]); 
-            break;
-        case 'payment_pages':
-            handleFileRequest('payment_pages.json');
+            if ($method === 'GET') {
+                jsonResponse(getSettingsData());
+            } else {
+                $input = json_decode(file_get_contents('php://input'), true);
+                $res = updateSettingsData($input);
+                jsonResponse(['success' => $res === true, 'error' => $res !== true ? $res : null]);
+            }
             break;
         case 'ip_logs':
-            handleFileRequest('ip_logs.json');
+            try {
+                $db = DB::getInstance();
+                jsonResponse($db->fetchAll("SELECT * FROM ip_logs ORDER BY timestamp DESC"));
+            } catch (Exception $e) {
+                jsonResponse([]);
+            }
             break;
         case 'add_order':
             if ($_SERVER['REQUEST_METHOD'] !== 'POST') jsonResponse(['error' => 'POST required'], 405);
             $input = json_decode(file_get_contents('php://input'), true);
             if (!$input) jsonResponse(['error' => 'Invalid data'], 400);
             
-            // v2.1.6: Auto-Unregister Waiter just in case
-            if (isset($input['amount']) && isset($input['clientId'])) {
-                unregisterWaiter($input['amount'], $input['clientId']);
-            }
-            
-            // v2.1.4: Secondary Hardcore Validation before adding order
-            if (isset($input['lockTicket']) && isset($input['inventoryId']) && isset($input['accountId'])) {
-                $shopsFile = $baseDir . '/shops.json';
-                if (file_exists($shopsFile)) {
-                    $sfp = fopen($shopsFile, 'c+b');
-                    if (flock($sfp, LOCK_EX)) {
-                        $sContent = stream_get_contents($sfp);
-                        $sData = json_decode($sContent, true);
-                        $validLock = false;
-                        if (is_array($sData)) {
-                            foreach ($sData as $acc) {
-                                if ((string)$acc['id'] === (string)$input['accountId']) {
-                                    foreach ($acc['inventory'] as $invItem) {
-                                        if ((string)$invItem['id'] === (string)$input['inventoryId']) {
-                                            if (isset($invItem['internalStatus']) && $invItem['internalStatus'] === 'occupied' && 
-                                                isset($invItem['lockTicket']) && $invItem['lockTicket'] === $input['lockTicket']) {
-                                                $validLock = true;
-                                            }
-                                            break 2;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        flock($sfp, LOCK_UN);
-                        fclose($sfp);
-                        if (!$validLock) {
-                            jsonResponse(['error' => '库存锁定已失效或被他人抢占，请重新扫描匹配', 'code' => 'LOCK_INVALID'], 409);
-                        }
-                    } else {
-                        fclose($sfp);
-                        jsonResponse(['error' => '系统繁忙，无法校验库存锁'], 503);
-                    }
+            // v2.1.8 SQLite logic: secondary validation
+            if (isset($input['lockTicket']) && isset($input['inventoryId'])) {
+                $db = DB::getInstance();
+                $item = $db->fetchOne("SELECT internalStatus, lockTicket FROM inventory WHERE id = ?", [$input['inventoryId']]);
+                if (!$item || $item['internalStatus'] !== 'occupied' || $item['lockTicket'] !== $input['lockTicket']) {
+                    jsonResponse(['error' => '库存锁定已失效或被他人抢占，请重新扫描匹配', 'code' => 'LOCK_INVALID'], 409);
                 }
             }
             
-            $res = atomicAppend('orders.json', $input);
+            $res = atomicAppendOrder($input);
             if ($res === true) {
                 jsonResponse(['success' => true]);
             } else {
@@ -788,67 +997,30 @@ try {
             if ($_SERVER['REQUEST_METHOD'] !== 'POST') jsonResponse(['error' => 'POST required'], 405);
             $input = json_decode(file_get_contents('php://input'), true);
             if (!$input || !isset($input['price']) || !isset($input['internalOrderId'])) {
-                jsonResponse(['error' => 'Price and internalOrderId required'], 400);
+                jsonResponse(['error' => 'Missing price or internalOrderId'], 400);
             }
-            
-            $filters = isset($input['filters']) ? (array)$input['filters'] : [];
-            $res = matchAndLockItem($input['price'], $input['internalOrderId'], $filters);
-            
-            if (is_array($res)) {
-                jsonResponse(['success' => true, 'data' => $res]);
+            $result = matchAndLockItem($input['price'], $input['internalOrderId'], isset($input['filters']) ? $input['filters'] : []);
+            if (is_array($result)) {
+                jsonResponse(['success' => true, 'data' => $result]);
             } else {
-                jsonResponse(['error' => $res], 404);
-            }
-            break;
-        case 'lock_inventory':
-            if ($_SERVER['REQUEST_METHOD'] !== 'POST') jsonResponse(['error' => 'POST required'], 405);
-            $input = json_decode(file_get_contents('php://input'), true);
-            if (!$input || !isset($input['id'])) jsonResponse(['error' => 'Invalid data'], 400);
-            $res = atomicLockItem($input['id'], isset($input['time']) ? $input['time'] : time()*1000);
-            if ($res === true) {
-                jsonResponse(['success' => true]);
-            } else {
-                jsonResponse(['error' => $res], 500);
-            }
-            break;
-        case 'release_inventory':
-            if ($_SERVER['REQUEST_METHOD'] !== 'POST') jsonResponse(['error' => 'POST required'], 405);
-            $input = json_decode(file_get_contents('php://input'), true);
-            if (!$input || !isset($input['id'])) jsonResponse(['error' => 'Invalid data'], 400);
-            
-            // v2.1.5: Pass accountId for precise unlock
-            $res = atomicUnlockItem($input['id'], isset($input['accountId']) ? $input['accountId'] : null);
-            if ($res === true) {
-                jsonResponse(['success' => true]);
-            } else {
-                jsonResponse(['error' => $res], 500);
+                jsonResponse(['error' => $result], 403);
             }
             break;
         case 'add_ip_log':
             if ($_SERVER['REQUEST_METHOD'] !== 'POST') jsonResponse(['error' => 'POST required'], 405);
             $input = json_decode(file_get_contents('php://input'), true);
-            if (!$input || !isset($input['pageId'])) jsonResponse(['error' => 'Invalid data'], 400);
-            
-            atomicAddIpLog(getClientIp(), $input['pageId']);
-            jsonResponse(['success' => true]);
+            $ip = getClientIp();
+            $pageId = isset($input['pageId']) ? $input['pageId'] : 'unknown';
+            atomicAddIpLog($ip, $pageId);
+            jsonResponse(['success' => true, 'ip' => $ip]);
             break;
-
         case 'get_ip':
-            jsonResponse([
-                'ip' => getClientIp(),
-                'serverTime' => time() * 1000 // In milliseconds
-            ]);
+            jsonResponse(['ip' => getClientIp(), 'serverTime' => time() * 1000]);
             break;
-        
         case 'proxy':
-            if ($method !== 'POST') {
-                jsonResponse(['error' => 'Method Not Allowed'], 405);
-            }
-            
+            if ($method !== 'POST') jsonResponse(['error' => 'Method Not Allowed'], 405);
             $input = json_decode(file_get_contents('php://input'), true);
-            if (!$input || !isset($input['targetUrl'])) {
-                jsonResponse(['error' => 'Missing targetUrl'], 400);
-            }
+            if (!$input || !isset($input['targetUrl'])) jsonResponse(['error' => 'Missing targetUrl'], 400);
 
             $targetUrl = $input['targetUrl'];
             $proxyMethod = isset($input['method']) ? $input['method'] : 'GET';
@@ -856,7 +1028,6 @@ try {
             $cookie = isset($input['cookie']) ? $input['cookie'] : '';
             $body = isset($input['body']) ? $input['body'] : null;
 
-            // Setup Curl
             $ch = curl_init();
             curl_setopt($ch, CURLOPT_URL, $targetUrl);
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -874,38 +1045,26 @@ try {
             }
 
             $reqHeaders = [];
-            $hasUA = false;
             foreach ($headers as $k => $v) {
                 if (strtolower($k) === 'host') continue;
-                if (strtolower($k) === 'user-agent') $hasUA = true;
                 $reqHeaders[] = "$k: $v";
             }
-            if (!$hasUA) {
-                $reqHeaders[] = 'User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 zzVersion/11.21.5 zzT/16 zzDevice/1_141.0_3.0 zzApp/58ZhuanZhuan';
-            }
-            if ($cookie) {
-                $reqHeaders[] = 'Cookie: ' . $cookie;
-            }
+            if ($cookie) $reqHeaders[] = 'Cookie: ' . $cookie;
             
             curl_setopt($ch, CURLOPT_HTTPHEADER, $reqHeaders);
-            curl_setopt($ch, CURLOPT_HEADER, false);
-
             $response = curl_exec($ch);
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
             $error = curl_error($ch);
             curl_close($ch);
 
-            if ($error) {
-                jsonResponse(['error' => "Proxy Error: $error"], 500);
-            }
+            if ($error) jsonResponse(['error' => "Proxy Error: $error"], 500);
 
             http_response_code($httpCode);
             header('Content-Type: application/json'); 
             echo $response;
             break;
-
         default:
-            jsonResponse(['status' => 'ok', 'message' => 'API is running.']);
+            jsonResponse(['error' => 'Unknown action'], 404);
             break;
     }
 

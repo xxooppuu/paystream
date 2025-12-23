@@ -27,9 +27,14 @@ node_modules
 .env.production.local
 
 
-# JSON Data (Ignored to prevent conflicts and data overwrites)
+# JSON Data & DB (Ignored to prevent conflicts and data overwrites)
 shops.json
 orders.json
 buyers.json
 settings.json
 payment_pages.json
+*.json.bak
+paystream.db
+paystream.db-journal
+waiters.json
+ip_logs.json

@@ -23,6 +23,7 @@ import { PaymentPages } from './components/PaymentPages';
 import { PublicPayment } from './components/PublicPayment';
 import { ViewState, Order, OrderStatus } from './types';
 import { getApiUrl, PROXY_URL } from './config';
+import { SetupWizard } from './components/SetupWizard';
 const App: React.FC = () => {
   useEffect(() => {
     document.title = "PayStream Admin v2.1.7";
@@ -55,6 +56,8 @@ const App: React.FC = () => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [settings, setSettings] = useState<any>({});
   const [clockDrift, setClockDrift] = useState(0);
+  const [needsSetup, setNeedsSetup] = useState(false);
+  const [isCheckingSetup, setIsCheckingSetup] = useState(true);
 
   // Fetch Orders from Local Storage
   const fetchOrders = async () => {
@@ -70,18 +73,39 @@ const App: React.FC = () => {
       console.error("Failed to fetch orders from proxy", e);
     }
   };
-
-  // Also fetch on mount
+  // v2.1.8 Check Installation Status & Fetch Initial Data
   useEffect(() => {
+    fetch(getApiUrl('check_setup'))
+      .then(res => res.json())
+      .then(data => {
+        if (data.status === 'needs_setup' || data.installed === false) {
+          setNeedsSetup(true);
+        }
+        setIsCheckingSetup(false);
+      })
+      .catch(() => {
+        setIsCheckingSetup(false);
+      });
+
     fetchOrders();
     fetch(getApiUrl('settings'))
       .then(res => res.json())
-      .then(data => setSettings(data))
+      .then(data => {
+        if (data.status === 'needs_setup') {
+          setNeedsSetup(true);
+          return;
+        }
+        setSettings(data);
+      })
       .catch(console.error);
 
     fetch(getApiUrl('get_ip'))
       .then(res => res.json())
       .then(data => {
+        if (data.status === 'needs_setup') {
+          setNeedsSetup(true);
+          return;
+        }
         if (data.serverTime) {
           setClockDrift(data.serverTime - Date.now());
         }
@@ -447,6 +471,21 @@ const App: React.FC = () => {
 
   if (publicPayId) {
     return <PublicPayment pageId={publicPayId} />;
+  }
+
+  if (isCheckingSetup) {
+    return (
+      <div className="min-h-screen bg-[#0f172a] flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
+          <p className="text-blue-400 font-medium animate-pulse">正在检查系统环境...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (needsSetup) {
+    return <SetupWizard onComplete={() => setNeedsSetup(false)} />;
   }
 
   if (!isLoggedIn) {

@@ -1,1 +1,1 @@
-PayStream v2.1.6 - FIFO Accuracy & IP Limit Fix (ClientId based)
+PayStream v2.1.7 - Final InternalOrderId Lock & Transparent Queuing
