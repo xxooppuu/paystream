@@ -83,9 +83,16 @@ function handleFileRequest($filename, $default = []) {
             }
             $oldData = json_decode($oldContent, true);
 
+            // v2.1.3: 健壮性检查 - 如果文件有内容但解析失败，则报错退出，防止清空文件
+            if (!empty($oldContent) && $oldData === null && json_last_error() !== JSON_ERROR_NONE) {
+                flock($fp, LOCK_UN);
+                fclose($fp);
+                jsonResponse(['error' => 'Data corrupted, keeping original file'], 500);
+            }
+
             // v1.8.0: Smart Merge for ALL critical files
             if ($filename === 'shops.json' && is_array($oldData) && is_array($newData)) {
-                // Preserve internalStatus
+                // ... (保持原有的 shops 合并逻辑)
                 $lockMap = [];
                 foreach ($oldData as $oldAccount) {
                     if (!isset($oldAccount['inventory']) || !is_array($oldAccount['inventory'])) continue;
@@ -110,9 +117,12 @@ function handleFileRequest($filename, $default = []) {
                 // v1.8.0: Lossless Order Merge
                 // v1.8.9: Smart Status Protection (Prevent Stale Overwrites)
                 $orderMap = [];
-                foreach ($oldData as $o) $orderMap[$o['id']] = $o;
+                foreach ($oldData as $o) {
+                    if (isset($o['id'])) $orderMap[$o['id']] = $o;
+                }
                 
                 foreach ($newData as $o) {
+                    if (!isset($o['id'])) continue;
                     $id = $o['id'];
                     if (isset($orderMap[$id])) {
                         // Smart Merge: Don't let 'pending' overwrite terminal states
@@ -126,7 +136,14 @@ function handleFileRequest($filename, $default = []) {
                     }
                     $orderMap[$id] = $o; 
                 }
-                $input = json_encode(array_values($orderMap), JSON_UNESCAPED_UNICODE);
+                // v2.1.3: 确保按时间排序或保持原有顺序
+                $finalOrders = array_values($orderMap);
+                usort($finalOrders, function($a, $b) {
+                    $ta = isset($a['createdAt']) ? strtotime($a['createdAt']) : 0;
+                    $tb = isset($b['createdAt']) ? strtotime($b['createdAt']) : 0;
+                    return $tb - $ta; // 最新的在前面
+                });
+                $input = json_encode($finalOrders, JSON_UNESCAPED_UNICODE);
             }
 
             ftruncate($fp, 0);
@@ -166,6 +183,13 @@ function atomicAppend($filename, $newItem) {
             }
         }
         
+        // v2.1.3: 再次验证，如果还是 null 且原文件有内容，说明解析彻底失败，报错以保护数据
+        if ($data === null && !empty($content) && json_last_error() !== JSON_ERROR_NONE) {
+            flock($fp, LOCK_UN);
+            fclose($fp);
+            return "JSON Corrupted (Error: " . json_last_error() . "). Order not appended to protect DB.";
+        }
+
         if (!is_array($data)) $data = [];
         
         $data[] = $newItem;

@@ -276,191 +276,210 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
                     </div>
                 </div>
 
-                {/* Content - Removed Top Duplicate Notice */}
+                {/* Content Area */}
                 <div className="p-8">
-
-                    {config.isOpen === false ? (
-                        <div className="text-center py-12 space-y-6 animate-fade-in">
-                            <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-6 text-slate-400">
-                                <Hourglass className="w-10 h-10" />
-                            </div>
-                            <div className="space-y-2">
-                                <h3 className="text-xl font-bold text-slate-800">商家休息中</h3>
-                                <p className="text-slate-500">很抱歉，当前暂不接受新订单</p>
-                            </div>
-                            {config.notice && (
-                                <div className="bg-amber-50 text-amber-800 p-4 rounded-xl text-sm border border-amber-100 text-left">
-                                    <div className="font-bold flex items-center gap-2 mb-1">
-                                        <AlertCircle className="w-4 h-4" />
-                                        <span>重要通知</span>
+                    {(() => {
+                        // 1. 商家休息中 (最高优先级)
+                        if (config.isOpen === false) {
+                            return (
+                                <div className="text-center py-12 space-y-6 animate-fade-in">
+                                    <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-6 text-slate-400">
+                                        <Hourglass className="w-10 h-10" />
                                     </div>
-                                    <p className="whitespace-pre-wrap">{config.notice}</p>
+                                    <div className="space-y-2">
+                                        <h3 className="text-xl font-bold text-slate-800">商家休息中</h3>
+                                        <p className="text-slate-500">很抱歉，当前暂不接受新订单</p>
+                                    </div>
+                                    {config.notice && (
+                                        <div className="bg-amber-50 text-amber-800 p-4 rounded-xl text-sm border border-amber-100 text-left">
+                                            <div className="font-bold flex items-center gap-2 mb-1">
+                                                <AlertCircle className="w-4 h-4" />
+                                                <span>重要通知</span>
+                                            </div>
+                                            <p className="whitespace-pre-wrap">{config.notice}</p>
+                                        </div>
+                                    )}
+                                    <button onClick={() => window.location.reload()} className="text-indigo-600 font-bold text-sm mt-4 hover:underline">
+                                        点击刷新试试
+                                    </button>
                                 </div>
-                            )}
-                            <button onClick={() => window.location.reload()} className="text-indigo-600 font-bold text-sm mt-4 hover:underline">
-                                点击刷新试试
-                            </button>
-                        </div>
-                    ) : ipLimitError ? (
-                        <div className="text-center py-12 space-y-6 animate-fade-in">
-                            <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mx-auto text-red-500">
-                                <Clock className="w-8 h-8" />
-                            </div>
-                            <div className="space-y-4">
-                                <h3 className="text-lg font-bold text-slate-800">付款频率超限</h3>
-                                <p className="text-slate-600 text-sm bg-red-50 p-4 rounded-xl border border-red-100 leading-relaxed">
-                                    {ipLimitError}
-                                </p>
-                                <button onClick={() => setIpLimitError(null)} className="bg-indigo-600 text-white px-8 py-3 rounded-xl font-bold">
-                                    我知道了
-                                </button>
-                            </div>
-                        </div>
-                    ) : step === 0 && (
-                        <div className="space-y-6 animate-fade-in">
-                            <label className="block text-sm font-medium text-slate-700 mb-2">请输入支付金额</label>
-                            <div className="relative">
-                                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-xl font-bold">¥</span>
-                                <input
-                                    type="number"
-                                    className="w-full pl-10 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-xl text-2xl font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 transition-all placeholder:text-slate-300"
-                                    placeholder="0.00"
-                                    value={amountInput}
-                                    onChange={e => setAmountInput(e.target.value)}
-                                />
-                            </div>
+                            );
+                        }
 
-                            {amountInput && parseFloat(amountInput) > 0 && adjustedAmount !== parseFloat(amountInput) && (
-                                <div className="mt-3 flex items-start gap-2 text-amber-600 bg-amber-50 p-3 rounded-lg text-sm">
-                                    <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
-                                    <span>
-                                        根据通道规则，实际支付金额将调整为 <span className="font-bold">¥{adjustedAmount}</span>
-                                    </span>
+                        // 2. IP 限制 (仅在订单生成前生效)
+                        if (ipLimitError && step < 4) {
+                            return (
+                                <div className="text-center py-12 space-y-6 animate-fade-in">
+                                    <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mx-auto text-red-500">
+                                        <Clock className="w-8 h-8" />
+                                    </div>
+                                    <div className="space-y-4">
+                                        <h3 className="text-lg font-bold text-slate-800">付款频率超限</h3>
+                                        <p className="text-slate-600 text-sm bg-red-50 p-4 rounded-xl border border-red-100 leading-relaxed">
+                                            {ipLimitError}
+                                        </p>
+                                        <button onClick={() => setIpLimitError(null)} className="bg-indigo-600 text-white px-8 py-3 rounded-xl font-bold">
+                                            我知道了
+                                        </button>
+                                    </div>
                                 </div>
-                            )}
+                            );
+                        }
 
-                            <button
-                                onClick={handlePay}
-                                disabled={adjustedAmount <= 0 || loading}
-                                className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-bold py-4 rounded-xl shadow-lg shadow-indigo-200 transition-all transform active:scale-95 flex items-center justify-center gap-2"
-                            >
-                                {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <ShieldCheck className="w-5 h-5" />}
-                                <span>立即支付 ¥{adjustedAmount > 0 ? adjustedAmount : '0.00'}</span>
-                            </button>
-
-                            <InfoBox />
-                        </div>
-                    )}
-
-                    {step === 0.5 && (
-                        <div className="text-center py-12 space-y-6 animate-fade-in">
-                            <div className="w-20 h-20 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-6 text-amber-600 animate-pulse">
-                                <Hourglass className="w-10 h-10" />
-                            </div>
-                            <div className="space-y-4">
-                                <h3 className="text-xl font-bold text-slate-800">当前订单过多，排队中...</h3>
-                                <div className="bg-amber-50 text-amber-800 px-4 py-3 rounded-xl border border-amber-100 max-w-xs mx-auto">
-                                    <p className="text-sm">系统正在努力匹配空闲商品</p>
-                                    <p className="text-xs mt-1 text-amber-600">预计等待时间: {queueTimeLeft !== null ? `${queueTimeLeft}秒` : '计算中...'}</p>
+                        // 3. 错误状态 (非超时且非 IP 限制)
+                        if (error && step !== 7 && !ipLimitError) {
+                            return (
+                                <div className="text-center py-8">
+                                    <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4 text-red-500">
+                                        <XCircle className="w-8 h-8" />
+                                    </div>
+                                    <h3 className="text-lg font-bold text-slate-800 mb-2">订单提交失败</h3>
+                                    <p className="text-slate-500 text-sm mb-6">当前系统繁忙，请稍后重试</p>
+                                    <button onClick={() => window.location.reload()} className="text-indigo-600 font-bold hover:underline">
+                                        返回重新下单
+                                    </button>
                                 </div>
+                            );
+                        }
 
-                                <div className="w-full bg-slate-100 rounded-full h-2 mt-4 overflow-hidden">
-                                    <div className="bg-amber-500 h-full rounded-full animate-progress-indeterminate"></div>
-                                </div>
-                                <p className="text-xs text-slate-400">一旦有空闲将自动为您匹配</p>
-                            </div>
-                        </div>
-                    )}
+                        // 4. 不同步骤渲染
+                        switch (step) {
+                            case 0:
+                                return (
+                                    <div className="space-y-6 animate-fade-in">
+                                        <label className="block text-sm font-medium text-slate-700 mb-2">请输入支付金额</label>
+                                        <div className="relative">
+                                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-xl font-bold">¥</span>
+                                            <input
+                                                type="number"
+                                                className="w-full pl-10 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-xl text-2xl font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 transition-all placeholder:text-slate-300"
+                                                placeholder="0.00"
+                                                value={amountInput}
+                                                onChange={e => setAmountInput(e.target.value)}
+                                            />
+                                        </div>
 
-                    {step > 0 && step < 5 && (
-                        <div className="text-center py-12 space-y-6">
-                            <Loader2 className="w-16 h-16 animate-spin text-indigo-600 mx-auto" />
-                            <div className="space-y-2">
-                                <h3 className="text-xl font-medium text-slate-800">正在生成订单</h3>
-                                <p className="text-slate-500">请稍候，由于金额校验安全需要，预计需要 3-5 秒...</p>
-                            </div>
-                        </div>
-                    )}
+                                        {amountInput && parseFloat(amountInput) > 0 && adjustedAmount !== parseFloat(amountInput) && (
+                                            <div className="mt-3 flex items-start gap-2 text-amber-600 bg-amber-50 p-3 rounded-lg text-sm">
+                                                <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                                                <span>
+                                                    根据通道规则，实际支付金额将调整为 <span className="font-bold">¥{adjustedAmount}</span>
+                                                </span>
+                                            </div>
+                                        )}
 
-                    {step === 5 && paymentLink && (
-                        <div className="flex flex-col items-center animate-fade-in text-center">
+                                        <button
+                                            onClick={handlePay}
+                                            disabled={adjustedAmount <= 0 || loading}
+                                            className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-bold py-4 rounded-xl shadow-lg shadow-indigo-200 transition-all transform active:scale-95 flex items-center justify-center gap-2"
+                                        >
+                                            {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <ShieldCheck className="w-5 h-5" />}
+                                            <span>立即支付 ¥{adjustedAmount > 0 ? adjustedAmount : '0.00'}</span>
+                                        </button>
+                                        <InfoBox />
+                                    </div>
+                                );
 
-                            {/* Order Info */}
-                            {orderInfo && (
-                                <div className="mb-6 w-full bg-slate-50 rounded-xl p-4 border border-slate-100">
-                                    <div className="text-3xl font-bold text-slate-800 mb-1">¥ {orderInfo.amount}</div>
-                                    <div className="text-xs text-slate-400 font-mono">订单号: {orderInfo.internalOrderId}</div>
-                                </div>
-                            )}
+                            case 0.5:
+                                return (
+                                    <div className="text-center py-12 space-y-6 animate-fade-in">
+                                        <div className="w-20 h-20 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-6 text-amber-600 animate-pulse">
+                                            <Hourglass className="w-10 h-10" />
+                                        </div>
+                                        <div className="space-y-4">
+                                            <h3 className="text-xl font-bold text-slate-800">当前订单过多，排队中...</h3>
+                                            <div className="bg-amber-50 text-amber-800 px-4 py-3 rounded-xl border border-amber-100 max-w-xs mx-auto">
+                                                <p className="text-sm">系统正在努力匹配空闲商品</p>
+                                                <p className="text-xs mt-1 text-amber-600">预计等待时间: {queueTimeLeft !== null ? `${queueTimeLeft}秒` : '计算中...'}</p>
+                                            </div>
+                                            <div className="w-full bg-slate-100 rounded-full h-2 mt-4 overflow-hidden">
+                                                <div className="bg-amber-500 h-full rounded-full animate-progress-indeterminate"></div>
+                                            </div>
+                                            <p className="text-xs text-slate-400">一旦有空闲将自动为您匹配</p>
+                                        </div>
+                                    </div>
+                                );
 
-                            {/* Timer */}
-                            <div className="mb-8 flex flex-col items-center">
-                                <div className="text-4xl font-mono font-bold text-slate-800 mb-2">
-                                    {timeLeft !== null ? formatTime(timeLeft) : '--:--'}
-                                </div>
-                                <div className="flex items-center gap-2 text-indigo-600 font-medium bg-indigo-50 px-3 py-1 rounded-full text-sm">
-                                    <Clock className="w-4 h-4" />
-                                    <span>订单已生成，请尽快支付</span>
-                                </div>
-                            </div>
+                            case 1:
+                            case 2:
+                            case 3:
+                            case 4:
+                                return (
+                                    <div className="text-center py-12 space-y-6">
+                                        <Loader2 className="w-16 h-16 animate-spin text-indigo-600 mx-auto" />
+                                        <div className="space-y-2">
+                                            <h3 className="text-xl font-medium text-slate-800">正在生成订单</h3>
+                                            <p className="text-slate-500">请稍候，由于金额校验安全需要，预计需要 3-5 秒...</p>
+                                        </div>
+                                    </div>
+                                );
 
-                            <a
-                                href={paymentLink}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="w-full bg-green-600 hover:bg-green-700 text-white py-4 rounded-xl font-bold text-lg text-center flex items-center justify-center gap-2 transition-colors mb-8 shadow-lg shadow-green-200"
-                            >
-                                <Smartphone className="w-5 h-5" />
-                                <span>点击跳转微信支付</span>
-                            </a>
+                            case 5:
+                                return paymentLink ? (
+                                    <div className="flex flex-col items-center animate-fade-in text-center">
+                                        {orderInfo && (
+                                            <div className="mb-6 w-full bg-slate-50 rounded-xl p-4 border border-slate-100">
+                                                <div className="text-3xl font-bold text-slate-800 mb-1">¥ {orderInfo.amount}</div>
+                                                <div className="text-xs text-slate-400 font-mono">订单号: {orderInfo.internalOrderId}</div>
+                                            </div>
+                                        )}
+                                        <div className="mb-8 flex flex-col items-center">
+                                            <div className="text-4xl font-mono font-bold text-slate-800 mb-2">
+                                                {timeLeft !== null ? formatTime(timeLeft) : '--:--'}
+                                            </div>
+                                            <div className="flex items-center gap-2 text-indigo-600 font-medium bg-indigo-50 px-3 py-1 rounded-full text-sm">
+                                                <Clock className="w-4 h-4" />
+                                                <span>订单已生成，请尽快支付</span>
+                                            </div>
+                                        </div>
+                                        <a
+                                            href={paymentLink}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="w-full bg-green-600 hover:bg-green-700 text-white py-4 rounded-xl font-bold text-lg text-center flex items-center justify-center gap-2 transition-colors mb-8 shadow-lg shadow-green-200"
+                                        >
+                                            <Smartphone className="w-5 h-5" />
+                                            <span>点击跳转微信支付</span>
+                                        </a>
+                                        <InfoBox />
+                                    </div>
+                                ) : null;
 
-                            <InfoBox />
-                        </div>
-                    )}
+                            case 6:
+                                return (
+                                    <div className="text-center py-12">
+                                        <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6 text-green-600">
+                                            <CheckCircle className="w-10 h-10" />
+                                        </div>
+                                        <h2 className="text-2xl font-bold text-slate-800">支付成功</h2>
+                                        <p className="text-slate-500 mt-2">订单已完成，感谢您的支付。</p>
+                                    </div>
+                                );
 
-                    {step === 6 && (
-                        <div className="text-center py-12">
-                            <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6 text-green-600">
-                                <CheckCircle className="w-10 h-10" />
-                            </div>
-                            <h2 className="text-2xl font-bold text-slate-800">支付成功</h2>
-                            <p className="text-slate-500 mt-2">订单已完成，感谢您的支付。</p>
-                        </div>
-                    )}
+                            case 7:
+                                return (
+                                    <div className="text-center py-12 space-y-6">
+                                        <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-6 text-slate-400">
+                                            <Clock className="w-10 h-10" />
+                                        </div>
+                                        <h2 className="text-2xl font-bold text-slate-800">订单已过期</h2>
+                                        <p className="text-slate-500 mt-2">支付时间已超长，订单已自动取消。</p>
+                                        <button
+                                            onClick={() => window.location.reload()}
+                                            className="mt-8 bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3 rounded-xl font-bold transition-colors"
+                                        >
+                                            刷新页面重新下单
+                                        </button>
+                                    </div>
+                                );
 
-                    {step === 7 && (
-                        <div className="text-center py-12 space-y-6">
-                            <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-6 text-slate-400">
-                                <Clock className="w-10 h-10" />
-                            </div>
-                            <h2 className="text-2xl font-bold text-slate-800">订单已过期</h2>
-                            <p className="text-slate-500 mt-2">支付时间已超长，订单已自动取消。</p>
-                            <button
-                                onClick={() => window.location.reload()}
-                                className="mt-8 bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3 rounded-xl font-bold transition-colors"
-                            >
-                                刷新页面重新下单
-                            </button>
-                        </div>
-                    )}
-
-                    {error && step !== 7 && (
-                        <div className="text-center py-8">
-                            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4 text-red-500">
-                                <XCircle className="w-8 h-8" />
-                            </div>
-                            <h3 className="text-lg font-bold text-slate-800 mb-2">订单提交失败</h3>
-                            <p className="text-slate-500 text-sm mb-6">当前系统繁忙，请稍后重试</p>
-                            {/* Detailed error hidden from UI but logged: {error} */}
-
-                            <button onClick={() => window.location.reload()} className="text-indigo-600 font-bold hover:underline">
-                                返回重新下单
-                            </button>
-                        </div>
-                    )}
+                            default:
+                                return null;
+                        }
+                    })()}
 
                     <div className="absolute bottom-4 left-0 right-0 text-center text-[10px] text-slate-300 pointer-events-none space-y-1">
-                        <div>PayStream v2.1.2 (Stability: {new Date().toLocaleTimeString()})</div>
+                        <div>PayStream v2.1.3 (Stability: {new Date().toLocaleTimeString()})</div>
                         {visitorIp && (
                             <div className="opacity-50">
                                 IP: {visitorIp} {ipUsage ? ` / ${ipUsage}` : ''} / SYNC: {Math.abs(clockDrift) > 1000 ? 'ADJ' : 'OK'}

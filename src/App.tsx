@@ -23,8 +23,11 @@ import { PaymentPages } from './components/PaymentPages';
 import { PublicPayment } from './components/PublicPayment';
 import { ViewState, Order, OrderStatus } from './types';
 import { getApiUrl, PROXY_URL } from './config';
-
 const App: React.FC = () => {
+  useEffect(() => {
+    document.title = "PayStream Admin v2.1.3";
+  }, []);
+
   // Check for Public Payment Route
   const [publicPayId, setPublicPayId] = useState<string | null>(null);
 
@@ -572,7 +575,7 @@ const App: React.FC = () => {
           </div>
           {/* Version Footer */}
           <div className="fixed bottom-4 right-4 text-xs text-slate-400 bg-white px-3 py-1 rounded-full shadow-sm border border-slate-200">
-            Admin v2.1.2 (Lock Stability Fix)
+            Admin v2.1.3 (Stability Fix)
           </div>
         </main>
       </div>
