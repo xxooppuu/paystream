@@ -26,7 +26,7 @@ import { getApiUrl, PROXY_URL } from './config';
 import { SetupWizard } from './components/SetupWizard';
 const App: React.FC = () => {
   useEffect(() => {
-    document.title = "PayStream Admin v2.2.2-DEPLOY";
+    document.title = "PayStream Admin v2.2.4-DEBUG";
   }, []);
 
   // Check for Public Payment Route
@@ -75,23 +75,27 @@ const App: React.FC = () => {
   };
   // v2.1.8 Check Installation Status & Fetch Initial Data
   useEffect(() => {
-    fetch(getApiUrl('check_setup'))
-      .then(res => res.json())
-      .then(data => {
-        // DEBUG: Alert the raw data to see what the server is saying
-        alert(`[DEBUG v2.2.2 Check]\nInstalled: ${data.installed}\nStatus: ${data.status}\nFull: ${JSON.stringify(data)}`);
-
-        if (data.status === 'needs_setup' || data.installed === false) {
-          setNeedsSetup(true);
-        } else {
-          // Explicitly log success
-          console.log('[DEBUG] System considers itself installed.');
+    const checkUrl = getApiUrl('check_setup') + '&_t=' + new Date().getTime();
+    fetch(checkUrl)
+      .then(async (res) => {
+        const text = await res.text();
+        try {
+          const data = JSON.parse(text);
+          // DEBUG OK
+          alert(`[DEBUG v2.2.4 Check]\nStatus: ${data.status}`);
+          if (data.status === 'needs_setup' || data.installed === false) {
+            setNeedsSetup(true);
+          }
+          setIsCheckingSetup(false);
+        } catch (e) {
+          // CRITICAL DEBUG
+          console.error("Server Response Not JSON:", text);
+          alert(`[CRITICAL ERROR v2.2.4]\nServer returned non-JSON data!\n\n${text.substring(0, 500)}`);
+          setIsCheckingSetup(false);
         }
-        setIsCheckingSetup(false);
       })
       .catch((err) => {
-        alert(`[DEBUG v2.2.1 Error]\nConnection Failed: ${err.message}\nCheck Network Tab in F12.`);
-        console.error("Setup check failed:", err);
+        alert(`[Network Error v2.2.4]\n${err.message}`);
         setIsCheckingSetup(false);
       });
 
