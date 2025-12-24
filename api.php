@@ -9,7 +9,7 @@
  */
 
 // Version Configuration
-define('APP_VERSION', 'v2.2.31');
+define('APP_VERSION', 'v2.2.32');
 
 // Prevent any output before headers
 ob_start();
@@ -653,24 +653,33 @@ function matchAndLockItem($targetPrice, $internalOrderId, $filters = []) {
         $availableItems = $db->fetchAll($sql, $params);
         $N = count($availableItems);
 
-        // 2. Check Queue Position
-        $queue = $db->fetchAll("SELECT id FROM orders WHERE abs(amount - ?) < 0.01 AND status = 'queueing' ORDER BY createdAt ASC, id ASC", [$price]);
+        // 2. Check Queue Position (v2.2.32 First Principles: Filter by active heartbeat > 30s)
+        $activeCutoff = $nowMs - 30000;
+        $queueSql = "SELECT id FROM orders 
+                     WHERE abs(amount - ?) < 0.01 
+                     AND status = 'queueing' 
+                     AND (lastHeartbeat > ? OR lastHeartbeat = 0 OR id = ?)
+                     ORDER BY createdAt ASC, id ASC";
+        $queue = $db->fetchAll($queueSql, [$price, $activeCutoff, $internalOrderId]);
         $queueIds = array_column($queue, 'id');
         $pos = array_search($internalOrderId, $queueIds);
 
         if ($pos === false) {
-            // Self-healing: Use ON DUPLICATE KEY to avoid 1062 error if order exists with different status
-            $db->query("INSERT INTO orders (id, customer, amount, status, channel, method, createdAt, internalOrderId) 
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                        ON DUPLICATE KEY UPDATE status = 'queueing', createdAt = VALUES(createdAt)", [
-                $internalOrderId, 'Guest', $price, 'queueing', 'Zhuanzhuan', 'WeChat', $createdAt, $internalOrderId
+            // First Principles: createdAt only on INSERT, ignore on DUPLICATE
+            $db->query("INSERT INTO orders (id, customer, amount, status, channel, method, createdAt, internalOrderId, lastHeartbeat) 
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ON DUPLICATE KEY UPDATE status = 'queueing', lastHeartbeat = ?", [
+                $internalOrderId, 'Guest', $price, 'queueing', 'Zhuanzhuan', 'WeChat', $createdAt, $internalOrderId, $nowMs, $nowMs
             ]);
             
             // Re-fetch queue
-            $queue = $db->fetchAll("SELECT id FROM orders WHERE abs(amount - ?) < 0.01 AND status = 'queueing' ORDER BY createdAt ASC, id ASC", [$price]);
+            $queue = $db->fetchAll($queueSql, [$price, $activeCutoff, $internalOrderId]);
             $queueIds = array_column($queue, 'id');
             $pos = array_search($internalOrderId, $queueIds);
-            
+        } else {
+            // Update Heartbeat to stay "active" in queue
+            $db->query("UPDATE orders SET lastHeartbeat = ? WHERE id = ?", [$nowMs, $internalOrderId]);
+        }    
             if ($pos === false) {
                  $pdo->rollBack();
                  return "排队系统异常，无法创建订单 (ID: $internalOrderId)";
@@ -962,6 +971,9 @@ function performSetup($adminPassword, $dbConfig) {
             // Column likely exists, ignore
         }
         try {
+            $pdo->exec("ALTER TABLE orders ADD COLUMN lastHeartbeat BIGINT DEFAULT 0");
+        } catch (Exception $e) {}
+        try {
             $pdo->exec("ALTER TABLE orders ADD COLUMN lockTicket VARCHAR(100)");
         } catch (Exception $e) {
             // Column likely exists, ignore
@@ -1228,9 +1240,10 @@ try {
             }
             $result = matchAndLockItem($input['price'], $input['internalOrderId'], isset($input['filters']) ? $input['filters'] : []);
             if (is_array($result)) {
-                if (isset($result['status']) && $result['status'] === 'queueing') {
                     $db = DB::getInstance();
-                    $total = $db->fetchOne("SELECT COUNT(*) as cnt FROM orders WHERE abs(amount - ?) < 0.01 AND status = 'queueing'", [(float)$input['price']]);
+                    $activeCutoff = (time() * 1000) - 30000;
+                    $totalSql = "SELECT COUNT(*) as cnt FROM orders WHERE abs(amount - ?) < 0.01 AND status = 'queueing' AND (lastHeartbeat > ? OR id = ?)";
+                    $total = $db->fetchOne($totalSql, [(float)$input['price'], $activeCutoff, $input['internalOrderId']]);
                     jsonResponse(['success' => false, 'queueing' => true, 'pos' => $result['pos'], 'queueSize' => (int)$total['cnt'], 'error' => $result['message']], 403);
                 }
                 jsonResponse(['success' => true, 'data' => $result]);
