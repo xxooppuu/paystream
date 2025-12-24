@@ -636,7 +636,7 @@ export const Inventory: React.FC = () => {
                                             {item.status}
                                         </div>
                                         {/* Internal Status Badge - Only show for non-sold items */}
-                                        {!item.status.includes('售出') && (
+                                        {!item.status.includes('售出') && !item.status.includes('买家') && (
                                             item.internalStatus === 'occupied' ? (
                                                 <div className="text-xs px-2 py-1 rounded backdrop-blur-sm font-medium bg-amber-500/90 text-white shadow-sm animate-pulse flex items-center gap-1 cursor-pointer hover:bg-amber-600 transition-colors"
                                                     onClick={(e) => { e.stopPropagation(); handleManualRelease(item); }}

@@ -9,7 +9,7 @@
  */
 
 // Version Configuration
-define('APP_VERSION', 'v2.2.13');
+define('APP_VERSION', 'v2.2.14');
 
 // Prevent any output before headers
 ob_start();
@@ -538,6 +538,7 @@ function matchAndLockItem($targetPrice, $internalOrderId, $filters = []) {
                 FROM inventory i 
                 JOIN shops s ON i.shopId = s.id 
                 WHERE abs(i.price - ?) < 0.01 
+                AND (i.status LIKE '%出售%' OR i.status LIKE '%在售%')
                 AND (i.internalStatus = 'idle' OR (i.internalStatus = 'occupied' AND (? - i.lastMatchedTime) > ?))";
         
         $params = [$price, $nowMs, $validityMs];
