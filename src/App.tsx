@@ -26,7 +26,7 @@ import { getApiUrl, PROXY_URL } from './config';
 import { SetupWizard } from './components/SetupWizard';
 const App: React.FC = () => {
   useEffect(() => {
-    document.title = "PayStream Admin v2.2.8";
+    document.title = "PayStream Admin v2.2.9";
   }, []);
 
   // Check for Public Payment Route
@@ -81,10 +81,13 @@ const App: React.FC = () => {
         const text = await res.text();
         try {
           const data = JSON.parse(text);
-          // DEBUG OK
-          alert(`[DEBUG v2.2.4 Check]\nStatus: ${data.status}`);
+          // DEBUG v2.2.9
+          alert(`[DEBUG v2.2.9]\nStatus: ${data.status}`);
           if (data.status === 'needs_setup' || data.installed === false) {
             setNeedsSetup(true);
+          } else {
+            // Only fetch orders if system is installed
+            fetchOrders();
           }
           setIsCheckingSetup(false);
         } catch (e) {
@@ -98,11 +101,6 @@ const App: React.FC = () => {
         alert(`[Network Error v2.2.4]\n${err.message}`);
         setIsCheckingSetup(false);
       });
-
-    // Only fetch data if setup is complete
-    if (!needsSetup && !isCheckingSetup) {
-      fetchOrders();
-    }
 
     fetch(getApiUrl('settings'))
       .then(res => res.json())
