@@ -9,7 +9,7 @@
  */
 
 // Version Configuration
-define('APP_VERSION', 'v2.2.26');
+define('APP_VERSION', 'v2.2.27');
 
 // Prevent any output before headers
 ob_start();
@@ -650,11 +650,6 @@ function matchAndLockItem($targetPrice, $internalOrderId, $filters = []) {
         $availableItems = $db->fetchAll($sql, $params);
         $N = count($availableItems);
 
-        if ($N === 0) {
-            $pdo->rollBack();
-            return "当前没有任何空闲商品，请在库存页面手动释放或等待过期释放";
-        }
-
         // 2. Check Queue Position
         $queue = $db->fetchAll("SELECT id FROM orders WHERE abs(amount - ?) < 0.01 AND status = 'queueing' ORDER BY createdAt ASC", [$price]);
         $queueIds = array_column($queue, 'id');
@@ -679,9 +674,15 @@ function matchAndLockItem($targetPrice, $internalOrderId, $filters = []) {
             }
         }
 
-        if ($pos >= $N) {
+        // v2.2.27 optimization: If no items OR position >= N, it's queueing
+        if ($N === 0 || $pos >= $N) {
             $pdo->rollBack();
-            return "排队中，前方有 " . ($pos) . " 位，可用商品 " . $N . " 件";
+            return [
+                'status' => 'queueing',
+                'pos' => $pos + 1,
+                'available' => $N,
+                'message' => "排队中，目前排位: 第 " . ($pos + 1) . " 位"
+            ];
         }
 
         // 3. Match and Lock
@@ -1195,9 +1196,12 @@ try {
             }
             $result = matchAndLockItem($input['price'], $input['internalOrderId'], isset($input['filters']) ? $input['filters'] : []);
             if (is_array($result)) {
+                if (isset($result['status']) && $result['status'] === 'queueing') {
+                    jsonResponse(['success' => false, 'queueing' => true, 'pos' => $result['pos'], 'error' => $result['message']], 403);
+                }
                 jsonResponse(['success' => true, 'data' => $result]);
             } else {
-                jsonResponse(['error' => $result], 403);
+                jsonResponse(['success' => false, 'queueing' => strpos($result, '排队') !== false, 'error' => $result], 403);
             }
             break;
         case 'add_ip_log':

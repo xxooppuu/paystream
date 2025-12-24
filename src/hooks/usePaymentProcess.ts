@@ -111,10 +111,14 @@ export const usePaymentProcess = () => {
                     }
                 } else {
                     const err = await matchRes.json().catch(() => ({}));
-                    if (err.error && err.error.includes('排队中')) {
+                    if (err.queueing) {
                         setStep(0.5); // 进入显示排队进度的 UI
                         addLog(`${err.error}`);
-                        setQueuePosition(attempts);
+                        if (err.pos) {
+                            setQueuePosition(err.pos);
+                        } else {
+                            setQueuePosition(attempts);
+                        }
                     } else {
                         addLog(`⚠️ 等待中: ${err.error || '正在获取库存优先级'}`);
                     }
