@@ -52,11 +52,11 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
           <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center mx-auto mb-4 backdrop-blur-sm">
             <Lock className="w-8 h-8 text-white" />
           </div>
-          <p className="text-xs text-slate-400 mt-8 text-center">PayStream Admin v2.2.21 版权所有</p>
-          <p className="text-indigo-200 text-sm">安全支付管理系统 v2.2.20</p>
+          <h1 className="text-2xl font-bold text-white mb-1">PayStream Admin</h1>
+          <p className="text-indigo-200 text-sm">安全支付管理系统 v2.2.21</p>
         </div>
 
-        <div className="p-8">
+        <div className="p-8 pb-4">
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">
