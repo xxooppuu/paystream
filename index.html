@@ -6,9 +6,39 @@
   <link rel="icon" type="image/svg+xml" href="/vite.svg" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="description" content="PayStream Secure Payment" />
+  <meta name="version-label" content="v2.2.20" />
   <title>PayStream Admin v2.2.20</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <script type="module" crossorigin src="/assets/index-M8ydkaYP.js"></script>
+  <style>
+    @keyframes progress-indeterminate {
+      0% {
+        width: 0%;
+        margin-left: 0%;
+      }
+
+      50% {
+        width: 50%;
+        margin-left: 25%;
+      }
+
+      100% {
+        width: 0%;
+        margin-left: 100%;
+      }
+    }
+
+    .animate-progress-indeterminate {
+      animation: progress-indeterminate 1.5s infinite ease-in-out;
+    }
+
+    /* Global Loading States */
+    body {
+      margin: 0;
+      background-color: #f8fafc;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+  </style>
+  <script type="module" crossorigin src="/assets/index-DZThdwvS.js"></script>
 </head>
 
 <body>
