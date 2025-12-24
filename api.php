@@ -9,7 +9,7 @@
  */
 
 // Version Configuration
-define('APP_VERSION', 'v2.2.37');
+define('APP_VERSION', 'v2.2.38');
 
 // Prevent any output before headers
 ob_start();
@@ -45,9 +45,19 @@ $act = isset($_GET['act']) ? $_GET['act'] : '';
 $method = $_SERVER['REQUEST_METHOD'];
 $baseDir = __DIR__; // Store json files in the same directory
 
-/* ---------------------------
-   DATABASE & INITIALIZATION
-   --------------------------- */
+// v2.2.38 Runtime Migration: Ensure columns exist for existing users
+if ($act !== 'setup' && file_exists($baseDir . '/db_config.php')) {
+    try {
+        $db = DB::getInstance();
+        $pdo = $db->getConnection();
+        // Skip migration if we just ran it recently (optional optimization, but let's just use try-catch for simplicity)
+        try { $pdo->exec("ALTER TABLE orders ADD COLUMN lastHeartbeat BIGINT DEFAULT 0"); } catch (Exception $e) {}
+        try { $pdo->exec("ALTER TABLE orders ADD COLUMN lockTicket VARCHAR(100)"); } catch (Exception $e) {}
+        try { $pdo->exec("ALTER TABLE inventory ADD COLUMN lockTicket VARCHAR(100)"); } catch (Exception $e) {}
+    } catch (Exception $e) {
+        // DB not ready yet, skip migration
+    }
+}
 
 class DB {
     private static $instance = null;
