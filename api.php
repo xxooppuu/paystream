@@ -9,7 +9,7 @@
  */
 
 // Version Configuration
-define('APP_VERSION', 'v2.2.18');
+define('APP_VERSION', 'v2.2.19');
 
 // Prevent any output before headers
 ob_start();
@@ -363,7 +363,9 @@ function updateShopsData($newData) {
         $pdo->beginTransaction();
 
         foreach ($newData as $shop) {
-            $db->query("INSERT OR REPLACE INTO shops (id, remark, cookie, csrfToken, status, lastUpdated) VALUES (?, ?, ?, ?, ?, ?)", [
+            $db->query("INSERT INTO shops (id, remark, cookie, csrfToken, status, lastUpdated) 
+                        VALUES (?, ?, ?, ?, ?, ?) 
+                        ON DUPLICATE KEY UPDATE remark=VALUES(remark), cookie=VALUES(cookie), csrfToken=VALUES(csrfToken), status=VALUES(status), lastUpdated=VALUES(lastUpdated)", [
                 $shop['id'], $shop['remark'], $shop['cookie'], $shop['csrfToken'], $shop['status'], $shop['lastUpdated']
             ]);
 
@@ -372,7 +374,7 @@ function updateShopsData($newData) {
                     $existing = $db->fetchOne("SELECT internalStatus, lastMatchedTime, lockTicket FROM inventory WHERE id = ?", [$item['id']]);
                     
                     $internalStatus = isset($item['internalStatus']) ? $item['internalStatus'] : 'idle';
-                    $lastMatchedTime = isset($item['lastMatchedTime']) ? $item['lastMatchedTime'] : null;
+                    $lastMatchedTime = isset($item['lastMatchedTime']) ? (float)$item['lastMatchedTime'] : null;
                     $lockTicket = isset($item['lockTicket']) ? $item['lockTicket'] : null;
 
                     if ($existing && $existing['internalStatus'] === 'occupied') {
@@ -381,9 +383,14 @@ function updateShopsData($newData) {
                         $lockTicket = $existing['lockTicket'];
                     }
 
-                    $db->query("INSERT OR REPLACE INTO inventory (id, shopId, childOrderId, orderId, infoId, parentTitle, picUrl, price, priceNum, status, internalStatus, lastMatchedTime, lockTicket) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [
-                        $item['id'], $shop['id'], $item['childOrderId'], $item['orderId'], $item['infoId'],
-                        $item['parentTitle'], $item['picUrl'], $item['price'], $item['priceNum'],
+                    $db->query("INSERT INTO inventory (id, shopId, childOrderId, infoId, parentTitle, picUrl, price, status, internalStatus, lastMatchedTime, lockTicket) 
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) 
+                                ON DUPLICATE KEY UPDATE 
+                                shopId=VALUES(shopId), childOrderId=VALUES(childOrderId), infoId=VALUES(infoId), parentTitle=VALUES(parentTitle), 
+                                picUrl=VALUES(picUrl), price=VALUES(price), status=VALUES(status), 
+                                internalStatus=VALUES(internalStatus), lastMatchedTime=VALUES(lastMatchedTime), lockTicket=VALUES(lockTicket)", [
+                        $item['id'], $shop['id'], $item['childOrderId'], $item['infoId'],
+                        $item['parentTitle'], $item['picUrl'], $item['price'],
                         $item['status'], $internalStatus, $lastMatchedTime, $lockTicket
                     ]);
                 }
@@ -392,7 +399,7 @@ function updateShopsData($newData) {
         $pdo->commit();
         return true;
     } catch (Exception $e) {
-        if ($pdo->inTransaction()) $pdo->rollBack();
+        if (isset($pdo) && $pdo->inTransaction()) $pdo->rollBack();
         return $e->getMessage();
     }
 }
@@ -639,142 +646,30 @@ function matchAndLockItem($targetPrice, $internalOrderId, $filters = []) {
  * Atomically locks an inventory item by ID.
  */
 function atomicLockItem($inventoryId, $matchedTime) {
-    global $baseDir;
-    $filePath = $baseDir . '/shops.json';
-    
-    if (!file_exists($filePath)) return "shops.json not found";
-    
-    $fp = fopen($filePath, 'c+b');
-    if (!$fp) return "Could not open shops.json";
-    
-    if (flock($fp, LOCK_EX)) {
-        rewind($fp);
-        $content = stream_get_contents($fp);
-        
-        // v2.1.2: Standardize on Server Time (IGNORE CLIENT TIME)
-        $matchedTime = time() * 1000;
-        
-        if (function_exists('mb_convert_encoding')) {
-            $content = mb_convert_encoding($content, 'UTF-8', 'UTF-8,GBK,ISO-8859-1');
-        }
-        
-        $data = json_decode($content, true);
-        if ($data === null) {
-            flock($fp, LOCK_UN);
-            fclose($fp);
-            $errCode = json_last_error();
-            return "shops.json parse failed (Code: $errCode)";
-        }
-        
-        if (!is_array($data)) {
-            flock($fp, LOCK_UN);
-            fclose($fp);
-            return "shops.json is not an array";
-        }
-        
-        $found = false;
-        $targetId = (string)$inventoryId;
-        
-        foreach ($data as &$account) {
-            if (!isset($account['inventory']) || !is_array($account['inventory'])) continue;
-            foreach ($account['inventory'] as &$item) {
-                if ((string)$item['id'] === $targetId) {
-                    $item['internalStatus'] = 'occupied';
-                    $item['lastMatchedTime'] = $matchedTime;
-                    $found = true;
-                    break 2;
-                }
-            }
-        }
-        
-        if ($found) {
-            ftruncate($fp, 0);
-            rewind($fp);
-            $json = json_encode($data, JSON_UNESCAPED_UNICODE);
-            if ($json === false) {
-                flock($fp, LOCK_UN);
-                fclose($fp);
-                return "Write encoding failed";
-            }
-            fwrite($fp, $json);
-            fflush($fp);
-            flock($fp, LOCK_UN);
-            fclose($fp);
-            return true;
-        }
-        
-        flock($fp, LOCK_UN);
-        fclose($fp);
-        return "Item $targetId not found";
+    try {
+        $db = DB::getInstance();
+        $nowMs = time() * 1000;
+        $db->query("UPDATE inventory SET internalStatus = 'occupied', lastMatchedTime = ?, lockTicket = ? WHERE id = ?", [
+            $nowMs, uniqid('MANUAL_', true), $inventoryId
+        ]);
+        return true;
+    } catch (Exception $e) {
+        return $e->getMessage();
     }
-    fclose($fp);
-    return "Lock acquisition failed";
 }
 
-/**
- * Atomically unlocks/releases an inventory item.
- * v2.1.5: Added accountId for precise unlocking.
- */
 function atomicUnlockItem($inventoryId, $accountId = null) {
-    global $baseDir;
-    $filePath = $baseDir . '/shops.json';
-    
-    if (!file_exists($filePath)) return "shops.json not found";
-    
-    $fp = fopen($filePath, 'c+b');
-    if (!$fp) return "Could not open shops.json";
-    
-    if (flock($fp, LOCK_EX)) {
-        rewind($fp);
-        $content = stream_get_contents($fp);
-        
-        if (function_exists('mb_convert_encoding')) {
-            $content = mb_convert_encoding($content, 'UTF-8', 'UTF-8,GBK,ISO-8859-1');
+    try {
+        $db = DB::getInstance();
+        if ($accountId) {
+            $db->query("UPDATE inventory SET internalStatus = 'idle', lastMatchedTime = NULL, lockTicket = NULL WHERE id = ? AND shopId = ?", [$inventoryId, $accountId]);
+        } else {
+            $db->query("UPDATE inventory SET internalStatus = 'idle', lastMatchedTime = NULL, lockTicket = NULL WHERE id = ?", [$inventoryId]);
         }
-        
-        $data = json_decode($content, true);
-        if ($data === null) {
-            flock($fp, LOCK_UN);
-            fclose($fp);
-            return "JSON parse failed during unlock";
-        }
-        
-        $found = false;
-        $targetId = (string)$inventoryId;
-        foreach ($data as &$account) {
-            // v2.1.5: Match accountId if provided
-            if ($accountId && (string)$account['id'] !== (string)$accountId) continue;
-            
-            if (!isset($account['inventory']) || !is_array($account['inventory'])) continue;
-            foreach ($account['inventory'] as &$item) {
-                // Robust comparison (string vs numeric)
-                $itemIdStr = (string)$item['id'];
-                if ($itemIdStr === $targetId) {
-                    $item['internalStatus'] = 'idle';
-                    unset($item['lastMatchedTime']);
-                    unset($item['lockTicket']);
-                    $found = true;
-                    break 2;
-                }
-            }
-        }
-        
-        if ($found) {
-            ftruncate($fp, 0);
-            rewind($fp);
-            fwrite($fp, json_encode($data, JSON_UNESCAPED_UNICODE));
-            fflush($fp);
-            flock($fp, LOCK_UN);
-            fclose($fp);
-            return true;
-        }
-        
-        flock($fp, LOCK_UN);
-        fclose($fp);
-        return "Item $targetId not found to unlock";
+        return true;
+    } catch (Exception $e) {
+        return $e->getMessage();
     }
-    fclose($fp);
-    return "Unlock acquisition failed";
 }
 
 /**
@@ -800,8 +695,8 @@ function proactiveCleanup() {
             UPDATE inventory 
             SET internalStatus = 'idle', lastMatchedTime = NULL, lockTicket = NULL 
             WHERE internalStatus = 'occupied' 
-            AND CAST(lastMatchedTime AS DECIMAL) > 0 
-            AND (? - CAST(lastMatchedTime AS DECIMAL)) > ?
+            AND lastMatchedTime IS NOT NULL 
+            AND (? - lastMatchedTime) > ?
         ")->execute([$nowMs, $timeoutMs]);
 
         // 2. Cleanup Old Orders
@@ -810,7 +705,7 @@ function proactiveCleanup() {
             UPDATE orders 
             SET status = 'cancelled' 
             WHERE UPPER(status) = 'PENDING' 
-            AND (strftime('%s', 'now') - strftime('%s', createdAt)) > 3600
+            AND (UNIX_TIMESTAMP() - UNIX_TIMESTAMP(STR_TO_DATE(createdAt, '%Y-%m-%dT%H:%i:%s'))) > 3600
         ")->execute();
 
         // QUEUEING > 10 mins
@@ -818,7 +713,7 @@ function proactiveCleanup() {
             UPDATE orders 
             SET status = 'cancelled' 
             WHERE UPPER(status) = 'QUEUEING' 
-            AND (strftime('%s', 'now') - strftime('%s', createdAt)) > 600
+            AND (UNIX_TIMESTAMP() - UNIX_TIMESTAMP(STR_TO_DATE(createdAt, '%Y-%m-%dT%H:%i:%s'))) > 600
         ")->execute();
 
         $pdo->commit();
@@ -1232,9 +1127,16 @@ try {
                 curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $proxyMethod);
             }
 
-            $reqHeaders = [];
+            $reqHeaders = [
+                'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept: application/json, text/plain, */*',
+                'Accept-Language: zh-CN,zh;q=0.9',
+                'Connection: keep-alive',
+                'Origin: https://www.zhuanzhuan.com',
+                'Referer: https://www.zhuanzhuan.com/'
+            ];
             foreach ($headers as $k => $v) {
-                if (strtolower($k) === 'host') continue;
+                if (in_array(strtolower($k), ['host', 'user-agent', 'referer'])) continue;
                 $reqHeaders[] = "$k: $v";
             }
             if ($cookie) $reqHeaders[] = 'Cookie: ' . $cookie;

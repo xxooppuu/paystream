@@ -33,8 +33,8 @@ export const OrderCenter: React.FC<OrderCenterProps> = ({ orders, onCancelOrder,
     const filteredOrders = useMemo(() => {
         const filtered = orders.filter(order => {
             const matchesSearch =
-                order.orderNo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                order.id.toLowerCase().includes(searchTerm.toLowerCase());
+                (order.orderNo?.toLowerCase() || '').includes(searchTerm.toLowerCase()) ||
+                (order.id?.toLowerCase() || '').includes(searchTerm.toLowerCase());
 
             const matchesDate = dateFilter ? order.createdAt.startsWith(dateFilter) : true;
             const matchesMethod = methodFilter !== 'all' ? order.method === methodFilter : true;
