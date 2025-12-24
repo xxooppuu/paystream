@@ -9,7 +9,7 @@
  */
 
 // Version Configuration
-define('APP_VERSION', 'v2.2.15');
+define('APP_VERSION', 'v2.2.16');
 
 // Prevent any output before headers
 ob_start();
@@ -542,11 +542,11 @@ function matchAndLockItem($targetPrice, $internalOrderId, $filters = []) {
 
         $params = [$nowMs, $validityMs];
         
-        // Price Match (unless ignored)
-        if (empty($filters['ignorePrice'])) {
-             $sql .= " AND abs(i.price - ?) < 0.01";
-             $params[] = $price;
-        }
+        // Workflow Alignment:
+        // User confirmed flow is "Match Idle Item -> Change Price".
+        // Therefore, we DO NOT match by price. We match ANY available capacity.
+        // Price filtering is removed permanently.
+        
         if ($specificShopId) {
             $sql .= " AND i.shopId = ?";
             $params[] = $specificShopId;
