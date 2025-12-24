@@ -191,7 +191,7 @@ export const OrderCenter: React.FC<OrderCenterProps> = ({ orders, onCancelOrder,
                                         </td>
                                         <td className="p-4 text-right">
                                             <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                {order.status === OrderStatus.PENDING && (
+                                                {(order.status === OrderStatus.PENDING || order.status === OrderStatus.QUEUEING) && (
                                                     <button
                                                         className="p-1.5 hover:bg-red-100 rounded text-red-500 flex items-center gap-1 text-xs font-medium px-2 border border-transparent hover:border-red-200 transition-colors"
                                                         title="取消订单"

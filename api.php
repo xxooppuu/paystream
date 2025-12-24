@@ -9,7 +9,7 @@
  */
 
 // Version Configuration
-define('APP_VERSION', 'v2.2.38');
+define('APP_VERSION', 'v2.2.39');
 
 // Prevent any output before headers
 ob_start();
@@ -637,6 +637,32 @@ function matchAndLockItem($targetPrice, $internalOrderId, $filters = []) {
         $nowMs = round($nowFloat * 1000);
         $createdAt = date('Y-m-d H:i:s.', (int)$nowFloat) . sprintf("%03d", ($nowFloat - (int)$nowFloat) * 1000);
         $price = (float)$targetPrice;
+
+        // v2.2.39: Status Guard - If order is already matched/complete, don't re-queue it
+        $existing = $db->fetchOne("SELECT status, orderNo, inventoryId, accountId, lockTicket FROM orders WHERE id = ?", [$internalOrderId]);
+        if ($existing && $existing['status'] !== 'queueing' && $existing['status'] !== 'failed') {
+            // Already pending/success, return status data
+            if ($existing['status'] === 'pending' || $existing['status'] === 'success') {
+                $match = $db->fetchOne("
+                    SELECT i.*, s.cookie, s.remark, s.csrfToken, s.status as shopStatus 
+                    FROM inventory i JOIN shops s ON i.shopId = s.id 
+                    WHERE i.id = ?", [$existing['inventoryId']]);
+                if ($match) {
+                    return [
+                        'item' => $match,
+                        'account' => [
+                            'id' => $match['shopId'],
+                            'remark' => $match['remark'],
+                            'cookie' => $match['cookie'],
+                            'csrfToken' => $match['csrfToken'],
+                            'status' => $match['shopStatus']
+                        ],
+                        'lockTicket' => $existing['lockTicket'],
+                        'internalOrderId' => $internalOrderId
+                    ];
+                }
+            }
+        }
         
         // v2.2.30: Force READ COMMITTED to see parallel queue entries immediately
         $pdo->exec("SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED");
@@ -668,7 +694,7 @@ function matchAndLockItem($targetPrice, $internalOrderId, $filters = []) {
         $queueSql = "SELECT id FROM orders 
                      WHERE abs(amount - ?) < 0.01 
                      AND status = 'queueing' 
-                     AND (lastHeartbeat > ? OR lastHeartbeat = 0 OR id = ?)
+                     AND (lastHeartbeat > ? OR id = ?)
                      ORDER BY createdAt ASC, id ASC";
         $queue = $db->fetchAll($queueSql, [$price, $activeCutoff, $internalOrderId]);
         $queueIds = array_column($queue, 'id');
@@ -830,12 +856,12 @@ function proactiveCleanup() {
             AND (UNIX_TIMESTAMP() - UNIX_TIMESTAMP(STR_TO_DATE(LEFT(createdAt, 19), '%Y-%m-%d %H:%i:%s'))) > 3600
         ")->execute();
 
-        // QUEUEING > 10 mins
+        // QUEUEING > 2 mins
         $pdo->prepare("
             UPDATE orders 
             SET status = 'cancelled' 
             WHERE UPPER(status) = 'QUEUEING' 
-            AND (UNIX_TIMESTAMP() - UNIX_TIMESTAMP(STR_TO_DATE(LEFT(createdAt, 19), '%Y-%m-%d %H:%i:%s'))) > 600
+            AND (UNIX_TIMESTAMP() - UNIX_TIMESTAMP(STR_TO_DATE(LEFT(createdAt, 19), '%Y-%m-%d %H:%i:%s'))) > 120
         ")->execute();
 
         $pdo->commit();
@@ -1208,11 +1234,9 @@ try {
             $input = json_decode(file_get_contents('php://input'), true);
             if (!$input) jsonResponse(['error' => 'Invalid data'], 400);
 
-            // v2.2.29: Ensure high-precision createdAt if missing
-            if (!isset($input['createdAt']) || strpos($input['createdAt'], '.') === false) {
-                $nowFloat = microtime(true);
-                $input['createdAt'] = date('Y-m-d H:i:s.', (int)$nowFloat) . sprintf("%03d", ($nowFloat - (int)$nowFloat) * 1000);
-            }
+            // v2.2.39: Absolute Server-Side Timing for FIFO stability
+            $nowFloat = microtime(true);
+            $input['createdAt'] = date('Y-m-d H:i:s.', (int)$nowFloat) . sprintf("%03d", ($nowFloat - (int)$nowFloat) * 1000);
             
             // v2.1.8 SQLite logic: secondary validation
             if (isset($input['lockTicket']) && isset($input['inventoryId'])) {
