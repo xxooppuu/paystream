@@ -9,7 +9,7 @@
  */
 
 // Version Configuration
-define('APP_VERSION', 'v2.2.8');
+define('APP_VERSION', 'v2.2.10');
 
 // Prevent any output before headers
 ob_start();
@@ -537,8 +537,8 @@ function matchAndLockItem($targetPrice, $internalOrderId, $filters = []) {
         $sql = "SELECT i.*, s.cookie, s.remark, s.csrfToken, s.status as shopStatus 
                 FROM inventory i 
                 JOIN shops s ON i.shopId = s.id 
-                WHERE abs(CAST(i.price AS REAL) - ?) < 0.01 
-                AND (i.internalStatus = 'idle' OR (i.internalStatus = 'occupied' AND (? - CAST(i.lastMatchedTime AS DECIMAL)) > ?))";
+                WHERE abs(i.price - ?) < 0.01 
+                AND (i.internalStatus = 'idle' OR (i.internalStatus = 'occupied' AND (? - i.lastMatchedTime) > ?))";
         
         $params = [$price, $nowMs, $validityMs];
         if ($specificShopId) {
