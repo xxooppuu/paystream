@@ -9,7 +9,7 @@
  */
 
 // Version Configuration
-define('APP_VERSION', 'v2.2.28');
+define('APP_VERSION', 'v2.2.29');
 
 // Prevent any output before headers
 ob_start();
@@ -677,7 +677,7 @@ function matchAndLockItem($targetPrice, $internalOrderId, $filters = []) {
 
         // v2.2.27 optimization: If no items OR position >= N, it's queueing
         if ($N === 0 || $pos >= $N) {
-            $pdo->rollBack();
+            $pdo->commit(); // v2.2.29: Commit the queueing status so it's visible to other parallel requests
             return [
                 'status' => 'queueing',
                 'pos' => $pos + 1,
@@ -1160,6 +1160,12 @@ try {
             if ($_SERVER['REQUEST_METHOD'] !== 'POST') jsonResponse(['error' => 'POST required'], 405);
             $input = json_decode(file_get_contents('php://input'), true);
             if (!$input) jsonResponse(['error' => 'Invalid data'], 400);
+
+            // v2.2.29: Ensure high-precision createdAt if missing
+            if (!isset($input['createdAt']) || strpos($input['createdAt'], '.') === false) {
+                $nowFloat = microtime(true);
+                $input['createdAt'] = date('Y-m-d H:i:s.', (int)$nowFloat) . sprintf("%03d", ($nowFloat - (int)$nowFloat) * 1000);
+            }
             
             // v2.1.8 SQLite logic: secondary validation
             if (isset($input['lockTicket']) && isset($input['inventoryId'])) {
