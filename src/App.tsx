@@ -26,7 +26,7 @@ import { getApiUrl, PROXY_URL } from './config';
 import { SetupWizard } from './components/SetupWizard';
 const App: React.FC = () => {
   useEffect(() => {
-    document.title = "PayStream Admin v2.2.1-DEBUG";
+    document.title = "PayStream Admin v2.2.2-DEPLOY";
   }, []);
 
   // Check for Public Payment Route
@@ -79,7 +79,7 @@ const App: React.FC = () => {
       .then(res => res.json())
       .then(data => {
         // DEBUG: Alert the raw data to see what the server is saying
-        alert(`[DEBUG v2.2.1 Check]\nInstalled: ${data.installed}\nStatus: ${data.status}\nFull: ${JSON.stringify(data)}`);
+        alert(`[DEBUG v2.2.2 Check]\nInstalled: ${data.installed}\nStatus: ${data.status}\nFull: ${JSON.stringify(data)}`);
 
         if (data.status === 'needs_setup' || data.installed === false) {
           setNeedsSetup(true);
