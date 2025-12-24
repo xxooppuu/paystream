@@ -9,7 +9,7 @@
  */
 
 // Version Configuration
-define('APP_VERSION', 'v2.2.20');
+define('APP_VERSION', 'v2.2.21');
 
 // Prevent any output before headers
 ob_start();

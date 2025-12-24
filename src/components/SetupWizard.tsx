@@ -113,6 +113,7 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ onComplete }) => {
                         <ShieldCheck className="w-10 h-10" />
                     </div>
                     <h1 className="text-2xl font-bold">PayStream v2.2.20</h1>
+                    <p className="text-sm text-slate-500 mb-6">您已成功安装 PayStream v2.2.21。旧版 JSON 数据已尝试自动迁移至 MySQL。</p>
                     <p className="text-blue-100 mt-2">系统初始化向导 (MySQL 数据库)</p>
                 </div>
 
@@ -300,6 +301,7 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ onComplete }) => {
                                     <Database className="w-10 h-10 text-blue-400" />
                                 </div>
                                 <h1 className="text-3xl font-bold text-white tracking-tight">PayStream v2.2.20</h1>
+                                <div className="text-sm font-medium text-slate-400 text-center mb-8">PayStream v2.2.21 部署向导</div>
                                 <p className="text-blue-100 text-lg">系统初始化向导 (MySQL 版)</p>
                             </div>
                             <p className="text-gray-400 mt-2 text-sm">
