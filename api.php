@@ -9,7 +9,7 @@
  */
 
 // Version Configuration
-define('APP_VERSION', 'v2.2.32');
+define('APP_VERSION', 'v2.2.33');
 
 // Prevent any output before headers
 ob_start();
@@ -676,14 +676,14 @@ function matchAndLockItem($targetPrice, $internalOrderId, $filters = []) {
             $queue = $db->fetchAll($queueSql, [$price, $activeCutoff, $internalOrderId]);
             $queueIds = array_column($queue, 'id');
             $pos = array_search($internalOrderId, $queueIds);
-        } else {
-            // Update Heartbeat to stay "active" in queue
-            $db->query("UPDATE orders SET lastHeartbeat = ? WHERE id = ?", [$nowMs, $internalOrderId]);
-        }    
+            
             if ($pos === false) {
                  $pdo->rollBack();
                  return "排队系统异常，无法创建订单 (ID: $internalOrderId)";
             }
+        } else {
+            // Update Heartbeat to stay "active" in queue
+            $db->query("UPDATE orders SET lastHeartbeat = ? WHERE id = ?", [$nowMs, $internalOrderId]);
         }
 
         // v2.2.27 optimization: If no items OR position >= N, it's queueing
