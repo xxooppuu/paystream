@@ -26,7 +26,7 @@ import { getApiUrl, PROXY_URL } from './config';
 import { SetupWizard } from './components/SetupWizard';
 const App: React.FC = () => {
   useEffect(() => {
-    document.title = 'PayStream Admin v2.2.21';
+    document.title = 'PayStream Admin v2.2.22';
   }, []);
 
   // Check for Public Payment Route
@@ -628,7 +628,7 @@ const App: React.FC = () => {
           </div>
           {/* Version Footer */}
           <div className="fixed bottom-4 right-4 text-xs text-slate-400 bg-white px-3 py-1 rounded-full shadow-sm border border-slate-200">
-            Admin v2.2.1-MySQL
+            Admin v2.2.22-MySQL
           </div>
         </main>
       </div>

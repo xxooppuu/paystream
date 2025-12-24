@@ -52,6 +52,8 @@ export const releaseInventory = async (inventoryId: string | undefined, accountI
             })
         });
         console.log(`[Atomic] Inventory ${inventoryId} (Acc: ${accountId}) released.`);
+        // v2.2.22: Trigger global UI refresh
+        window.dispatchEvent(new CustomEvent('refresh-inventory'));
     } catch (e) {
         console.error("Failed to release inventory", e);
     }

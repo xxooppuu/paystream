@@ -9,7 +9,7 @@
  */
 
 // Version Configuration
-define('APP_VERSION', 'v2.2.21');
+define('APP_VERSION', 'v2.2.22');
 
 // Prevent any output before headers
 ob_start();
@@ -563,7 +563,7 @@ function matchAndLockItem($targetPrice, $internalOrderId, $filters = []) {
         $validityMs = $validityDuration * 1000;
         $specificShopId = isset($filters['specificShopId']) ? (string)$filters['specificShopId'] : null;
 
-        $sql = "SELECT i.*, s.cookie, s.remark, s.csrfToken, s.status as shopStatus 
+        $sql = "SELECT i.*, i.shopId as accountId, s.cookie, s.remark, s.csrfToken, s.status as shopStatus 
                 FROM inventory i
                 JOIN shops s ON i.shopId = s.id
                 WHERE (i.status LIKE '%在售%' OR i.status LIKE '%待卖%' OR i.status LIKE '%出售%' OR i.status LIKE '%代卖%')

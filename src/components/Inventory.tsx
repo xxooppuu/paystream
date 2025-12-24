@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
     Plus,
     Trash2,
@@ -47,23 +47,31 @@ export const Inventory: React.FC = () => {
     const [newCookie, setNewCookie] = useState('');
     const [newCsrfToken, setNewCsrfToken] = useState('');
 
-    // Load shops and SAVED INVENTORY from backend on mount
-    useEffect(() => {
+    const fetchShopsData = useCallback(() => {
         fetch(getApiUrl('shops'))
             .then(res => res.json())
             .then(data => {
                 if (Array.isArray(data)) {
-                    // Provide default empty inventory if not present in saved data (legacy support)
                     const fixedData = data.map((a: StoreAccount) => ({ ...a, inventory: a.inventory || [] }));
                     setAccounts(fixedData);
-
-                    // Reconstruct full inventory list from all accounts
                     const allItems = fixedData.flatMap((a: StoreAccount) => a.inventory || []);
                     setInventory(allItems);
                 }
             })
             .catch(err => console.error('Failed to load shops', err));
     }, []);
+
+    useEffect(() => {
+        fetchShopsData();
+
+        // v2.2.22: Listen for global refresh events from utilities
+        const handleForceRefresh = () => {
+            console.log('[Event] Inventory refresh triggered');
+            fetchShopsData();
+        };
+        window.addEventListener('refresh-inventory', handleForceRefresh);
+        return () => window.removeEventListener('refresh-inventory', handleForceRefresh);
+    }, [fetchShopsData]);
 
     const saveShopsToBackend = async (newAccounts: StoreAccount[], newInventory: InventoryItem[]) => {
         // Attach inventory to accounts for persistence
@@ -316,9 +324,8 @@ export const Inventory: React.FC = () => {
         await releaseInventory(item.id, item.accountId);
 
         // v2.2.20: Force refresh from backend to ensure state sync
-        if (typeof (window as any).refreshShops === 'function') {
-            (window as any).refreshShops();
-        }
+        // v2.2.22: Dispatch global event instead of calling window.refreshShops
+        window.dispatchEvent(new CustomEvent('refresh-inventory'));
     };
 
     /**
