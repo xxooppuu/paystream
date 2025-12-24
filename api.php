@@ -9,7 +9,7 @@
  */
 
 // Version Configuration
-define('APP_VERSION', 'v2.2.29');
+define('APP_VERSION', 'v2.2.30');
 
 // Prevent any output before headers
 ob_start();
@@ -628,6 +628,8 @@ function matchAndLockItem($targetPrice, $internalOrderId, $filters = []) {
         $createdAt = date('Y-m-d H:i:s.', (int)$nowFloat) . sprintf("%03d", ($nowFloat - (int)$nowFloat) * 1000);
         $price = (float)$targetPrice;
         
+        // v2.2.30: Force READ COMMITTED to see parallel queue entries immediately
+        $pdo->exec("SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED");
         $pdo->beginTransaction();
 
         // 1. Get Available Items (price match, idle or expired)
@@ -660,7 +662,7 @@ function matchAndLockItem($targetPrice, $internalOrderId, $filters = []) {
             // Self-healing: Use ON DUPLICATE KEY to avoid 1062 error if order exists with different status
             $db->query("INSERT INTO orders (id, customer, amount, status, channel, method, createdAt, internalOrderId) 
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                        ON DUPLICATE KEY UPDATE status = 'queueing'", [
+                        ON DUPLICATE KEY UPDATE status = 'queueing', createdAt = VALUES(createdAt)", [
                 $internalOrderId, 'Guest', $price, 'queueing', 'Zhuanzhuan', 'WeChat', $createdAt, $internalOrderId
             ]);
             
@@ -777,13 +779,13 @@ function proactiveCleanup() {
             AND (? - lastMatchedTime) > ?
         ")->execute([$nowMs, $timeoutMs]);
 
-        // 2. Cleanup Old Orders
+        // 2. Cleanup Old Orders (v2.2.30: Improved date parsing for ms strings)
         // PENDING > 1 hour
         $pdo->prepare("
             UPDATE orders 
             SET status = 'cancelled' 
             WHERE UPPER(status) = 'PENDING' 
-            AND (UNIX_TIMESTAMP() - UNIX_TIMESTAMP(STR_TO_DATE(createdAt, '%Y-%m-%dT%H:%i:%s'))) > 3600
+            AND (UNIX_TIMESTAMP() - UNIX_TIMESTAMP(STR_TO_DATE(LEFT(createdAt, 19), '%Y-%m-%d %H:%i:%s'))) > 3600
         ")->execute();
 
         // QUEUEING > 10 mins
@@ -791,7 +793,7 @@ function proactiveCleanup() {
             UPDATE orders 
             SET status = 'cancelled' 
             WHERE UPPER(status) = 'QUEUEING' 
-            AND (UNIX_TIMESTAMP() - UNIX_TIMESTAMP(STR_TO_DATE(createdAt, '%Y-%m-%dT%H:%i:%s'))) > 600
+            AND (UNIX_TIMESTAMP() - UNIX_TIMESTAMP(STR_TO_DATE(LEFT(createdAt, 19), '%Y-%m-%d %H:%i:%s'))) > 600
         ")->execute();
 
         $pdo->commit();
@@ -1204,7 +1206,9 @@ try {
             $result = matchAndLockItem($input['price'], $input['internalOrderId'], isset($input['filters']) ? $input['filters'] : []);
             if (is_array($result)) {
                 if (isset($result['status']) && $result['status'] === 'queueing') {
-                    jsonResponse(['success' => false, 'queueing' => true, 'pos' => $result['pos'], 'error' => $result['message']], 403);
+                    $db = DB::getInstance();
+                    $total = $db->fetchOne("SELECT COUNT(*) as cnt FROM orders WHERE abs(amount - ?) < 0.01 AND status = 'queueing'", [(float)$input['price']]);
+                    jsonResponse(['success' => false, 'queueing' => true, 'pos' => $result['pos'], 'queueSize' => (int)$total['cnt'], 'error' => $result['message']], 403);
                 }
                 jsonResponse(['success' => true, 'data' => $result]);
             } else {
