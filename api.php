@@ -597,14 +597,6 @@ function matchAndLockItem($targetPrice, $internalOrderId, $filters = []) {
         return "数据库操作失败: " . $e->getMessage();
     }
 }
-        
-        flock($fp, LOCK_UN);
-        fclose($fp);
-        return "No matching inventory found";
-    }
-    fclose($fp);
-    return "Lock error during matching";
-}
 
 /**
  * Atomically locks an inventory item by ID.
