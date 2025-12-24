@@ -26,7 +26,7 @@ import { getApiUrl, PROXY_URL } from './config';
 import { SetupWizard } from './components/SetupWizard';
 const App: React.FC = () => {
   useEffect(() => {
-    document.title = "PayStream Admin v2.2.4-DEBUG";
+    document.title = "PayStream Admin v2.2.6-NUCLEAR";
   }, []);
 
   // Check for Public Payment Route
