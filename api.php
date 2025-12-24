@@ -9,7 +9,7 @@
  */
 
 // Version Configuration
-define('APP_VERSION', 'v2.2.36');
+define('APP_VERSION', 'v2.2.37');
 
 // Prevent any output before headers
 ob_start();
@@ -1240,13 +1240,15 @@ try {
             }
             $result = matchAndLockItem($input['price'], $input['internalOrderId'], isset($input['filters']) ? $input['filters'] : []);
             if (is_array($result)) {
+                if (isset($result['status']) && $result['status'] === 'queueing') {
                     $db = DB::getInstance();
                     $activeCutoff = (time() * 1000) - 30000;
                     $totalSql = "SELECT COUNT(*) as cnt FROM orders WHERE abs(amount - ?) < 0.01 AND status = 'queueing' AND (lastHeartbeat > ? OR id = ?)";
                     $total = $db->fetchOne($totalSql, [(float)$input['price'], $activeCutoff, $input['internalOrderId']]);
                     jsonResponse(['success' => false, 'queueing' => true, 'pos' => $result['pos'], 'queueSize' => (int)$total['cnt'], 'error' => $result['message']], 403);
+                } else {
+                    jsonResponse(['success' => true, 'data' => $result]);
                 }
-                jsonResponse(['success' => true, 'data' => $result]);
             } else {
                 jsonResponse(['success' => false, 'queueing' => strpos($result, '排队') !== false, 'error' => $result], 403);
             }
