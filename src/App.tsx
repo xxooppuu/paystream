@@ -83,7 +83,11 @@ const App: React.FC = () => {
         }
         setIsCheckingSetup(false);
       })
-      .catch(() => {
+      .catch((err) => {
+        console.error("Setup check failed:", err);
+        // If check fails (e.g. 500 error), it might be uninitialized. 
+        // We shouldn't fail silently to login.
+        alert("系统状态检查失败，请检查控制台网络请求 (Network Tab)。\n可能是 api.php 报错或网络问题。");
         setIsCheckingSetup(false);
       });
 
