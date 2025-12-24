@@ -1021,7 +1021,7 @@ try {
             }
             
             try {
-                $dsn = \"mysql:host={$input['host']};port={$input['port']};dbname={$input['database']};charset=utf8mb4\";
+                $dsn = "mysql:host={$input['host']};port={$input['port']};dbname={$input['database']};charset=utf8mb4";
                 $testPdo = new PDO($dsn, $input['username'], $input['password']);
                 $testPdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
                 jsonResponse(['success' => true, 'message' => 'Connection successful']);
