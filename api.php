@@ -9,7 +9,7 @@
  */
 
 // Version Configuration
-define('APP_VERSION', 'v2.2.30');
+define('APP_VERSION', 'v2.2.31');
 
 // Prevent any output before headers
 ob_start();
@@ -688,22 +688,45 @@ function matchAndLockItem($targetPrice, $internalOrderId, $filters = []) {
             ];
         }
 
-        // 3. Match and Lock (v2.2.28 Offset Matching)
-        $match = $availableItems[$pos]; 
+        // 3. Match and Lock (v2.2.31 Atomic Iterative Locking)
+        $matched = false;
         $lockTicket = uniqid('LT_', true);
+        $match = null; // Initialize $match to ensure it's defined if loop doesn't run or match fails
 
-        // Update Inventory
-        $db->query("UPDATE inventory SET internalStatus = 'occupied', lastMatchedTime = ?, lockTicket = ? WHERE id = ?", [
-            $nowMs, $lockTicket, $match['id']
-        ]);
+        // Loop from current pos to end of available items
+        for ($i = $pos; $i < $N; $i++) {
+            $currentItem = $availableItems[$i];
+            
+            // Atomic update: only lock if still idle
+            $stmt = $pdo->prepare("UPDATE inventory SET internalStatus = 'occupied', lastMatchedTime = ?, lockTicket = ? WHERE id = ? AND internalStatus = 'idle'");
+            $stmt->execute([$nowMs, $lockTicket, $currentItem['id']]);
+            
+            if ($stmt->rowCount() > 0) {
+                $matched = true;
+                $match = $currentItem; // Assign the successfully locked item
+                break;
+            }
+            // If rowCount is 0, someone else grabbed this item, try the next one in list
+        }
 
+        if (!$matched) {
+            $pdo->commit(); 
+            return [
+                'status' => 'queueing',
+                'pos' => $pos + 1,
+                'available' => $N,
+                'message' => "商品被抢先一步，继续排队中，位次: " . ($pos + 1)
+            ];
+        }
+
+        // Successfully locked $match
         // Update Order
         $db->query("UPDATE orders SET status = 'pending', inventoryId = ?, accountId = ?, lockTicket = ? WHERE id = ?", [
             $match['id'], $match['shopId'], $lockTicket, $internalOrderId
         ]);
-
+        
         $pdo->commit();
-
+        
         return [
             'item' => $match,
             'account' => [
