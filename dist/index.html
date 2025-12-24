@@ -8,6 +8,15 @@
     <meta name="description" content="PayStream Secure Payment" />
     <title>PayStream v2.2.1-DEBUG</title>
     <meta name="version" content="v2.2.1-DEBUG" />
+    <script>
+        window.onerror = function (msg, url, line, col, error) {
+            alert("Critical Error:\n" + msg + "\nURL: " + url + "\nLine: " + line);
+            return false;
+        };
+        window.addEventListener('unhandledrejection', function (event) {
+            alert("Unhandled Rejection:\n" + event.reason);
+        });
+    </script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @keyframes progress-indeterminate {
