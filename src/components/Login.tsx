@@ -53,7 +53,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
             <Lock className="w-8 h-8 text-white" />
           </div>
           <h1 className="text-2xl font-bold text-white mb-1">PayStream Admin</h1>
-          <p className="text-indigo-200 text-sm">安全支付管理系统 v2.2.39</p>
+          <p className="text-indigo-200 text-sm">安全支付管理系统 v2.2.40</p>
         </div>
 
         <div className="p-8 pb-4">

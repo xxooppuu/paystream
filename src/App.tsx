@@ -26,7 +26,7 @@ import { getApiUrl, PROXY_URL } from './config';
 import { SetupWizard } from './components/SetupWizard';
 const App: React.FC = () => {
   useEffect(() => {
-    document.title = 'PayStream Admin v2.2.39';
+    document.title = 'PayStream Admin v2.2.40';
   }, []);
 
   // Check for Public Payment Route
@@ -215,7 +215,10 @@ const App: React.FC = () => {
   const handleCancelOrder = async (order: Order) => {
     if (!confirm('确定要取消此订单吗？')) return;
 
-    let success = await performOrderCancellation(order);
+    let success = true;
+    if (order.status !== OrderStatus.QUEUEING) {
+      success = await performOrderCancellation(order);
+    }
 
     if (success) {
       // Update Order Status locally
@@ -628,7 +631,7 @@ const App: React.FC = () => {
           </div>
           {/* Version Footer */}
           <div className="fixed bottom-4 right-4 text-xs text-slate-400 bg-white px-3 py-1 rounded-full shadow-sm border border-slate-200">
-            Admin v2.2.39-MySQL
+            Admin v2.2.40-MySQL
           </div>
         </main>
       </div>
