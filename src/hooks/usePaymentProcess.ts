@@ -42,7 +42,7 @@ export const usePaymentProcess = () => {
     const loading = step > 0 && step < 6;
 
     // v1.8.x: Server-Side Atomic Match & Lock with Timeout
-    const findAndLockInventory = async (amount: number, excludeIds: string[] = []): Promise<{ item: InventoryItem; freshAccounts: StoreAccount[] }> => {
+    const findAndLockInventory = async (amount: number, excludeIds: string[] = []): Promise<{ item: InventoryItem; freshAccounts: StoreAccount[]; orderId: string }> => {
         const timeoutSec = 240; // 4 mins total wait
         const endTime = Date.now() + timeoutSec * 1000;
         let attempts = 0;
@@ -105,7 +105,8 @@ export const usePaymentProcess = () => {
                         setLockTicket(result.data.lockTicket);
                         return {
                             item: result.data.item,
-                            freshAccounts: [result.data.account]
+                            freshAccounts: [result.data.account],
+                            orderId: currentOrderId
                         };
                     }
                 } else {
@@ -139,17 +140,16 @@ export const usePaymentProcess = () => {
             setOrder(null);
             setPaymentLink('');
 
-            // 1. Match & Lock (Server Atomic)
-            const { item, freshAccounts: currAccounts } = await findAndLockInventory(amount);
+            // 1. Find Inventory
+            const { item, freshAccounts: accountsAfterMatch, orderId: actualOrderId } = await findAndLockInventory(amount);
             currentMatchedItem = item;
             setMatchedItem(item);
-            setAccounts(currAccounts);
-            setStep(2);
+            setAccounts(accountsAfterMatch);
+            addLog(`正在改价为 ¥${amount}...`);
 
             // 2. Change Price
             setStep(3);
-            addLog(`正在改价为 ¥${amount}...`);
-            const sellerAccount = currAccounts.find(a => a.id === item.accountId);
+            const sellerAccount = accountsAfterMatch.find(a => a.id === item.accountId);
             if (!sellerAccount) throw new Error('卖家账号异常');
 
             const cents = Math.round(amount * 100);
@@ -367,7 +367,7 @@ export const usePaymentProcess = () => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     ...newOrder,
-                    id: internalOrderId, // Use the same ID as queueing
+                    id: actualOrderId, // v2.2.23: Use the local ID from flow to avoid null state closure
                     lockTicket: lockTicket,
                     inventoryId: item.id,
                     accountId: item.accountId

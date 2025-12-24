@@ -9,7 +9,7 @@
  */
 
 // Version Configuration
-define('APP_VERSION', 'v2.2.22');
+define('APP_VERSION', 'v2.2.23');
 
 // Prevent any output before headers
 ob_start();
@@ -316,8 +316,14 @@ function atomicAppendOrder($orderData) {
         $sql = "INSERT INTO orders (id, orderNo, customer, amount, currency, status, channel, method, createdAt, inventoryId, accountId, buyerId, internalOrderId) 
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON DUPLICATE KEY UPDATE 
-                orderNo=VALUES(orderNo), customer=VALUES(customer), amount=VALUES(amount), status=VALUES(status), 
-                inventoryId=VALUES(inventoryId), accountId=VALUES(accountId), buyerId=VALUES(buyerId), internalOrderId=VALUES(internalOrderId)";
+                orderNo=COALESCE(VALUES(orderNo), orderNo), 
+                customer=VALUES(customer), 
+                amount=VALUES(amount), 
+                status=VALUES(status), 
+                inventoryId=VALUES(inventoryId), 
+                accountId=VALUES(accountId), 
+                buyerId=VALUES(buyerId), 
+                internalOrderId=VALUES(internalOrderId)";
         
         $db->query($sql, [
             $orderData['id'],
@@ -590,8 +596,10 @@ function matchAndLockItem($targetPrice, $internalOrderId, $filters = []) {
         $pos = array_search($internalOrderId, $queueIds);
 
         if ($pos === false) {
-            // Self-healing: If order not found in queue (maybe simple_api add_order failed), create it now
-            $db->query("INSERT INTO orders (id, customer, amount, status, channel, method, createdAt, internalOrderId) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", [
+            // Self-healing: Use ON DUPLICATE KEY to avoid 1062 error if order exists with different status
+            $db->query("INSERT INTO orders (id, customer, amount, status, channel, method, createdAt, internalOrderId) 
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        ON DUPLICATE KEY UPDATE status = 'queueing'", [
                 $internalOrderId, 'Guest', $price, 'queueing', 'Zhuanzhuan', 'WeChat', date('c', $now), $internalOrderId
             ]);
             
