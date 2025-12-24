@@ -9,7 +9,7 @@
  */
 
 // Version Configuration
-define('APP_VERSION', 'v2.2.24');
+define('APP_VERSION', 'v2.2.25');
 
 // Prevent any output before headers
 ob_start();
@@ -153,9 +153,27 @@ try {
             if (!$checkOrd) {
                 $pdo->exec("ALTER TABLE orders ADD COLUMN lockTicket VARCHAR(100)");
             }
+
+            // v2.2.24: Migration Check for payment_pages
+            $checkPages = $pdo->query("SHOW TABLES LIKE 'payment_pages'")->fetch();
+            if (!$checkPages) {
+                $pdo->exec("CREATE TABLE IF NOT EXISTS payment_pages (
+                    id VARCHAR(100) PRIMARY KEY,
+                    title VARCHAR(255),
+                    channelId VARCHAR(100),
+                    minAmount DECIMAL(10,2),
+                    maxAmount DECIMAL(10,2),
+                    notice TEXT,
+                    isOpen TINYINT(1) DEFAULT 1,
+                    ipLimitTime DECIMAL(10,2),
+                    ipLimitCount INT,
+                    ipWhitelist TEXT,
+                    createdAt BIGINT
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+            }
         } catch (Exception $migEx) {
             // Silently ignore or log migration errors to prevent total system failure
-            error_log("Migration v2.2.18 failed: " . $migEx->getMessage());
+            error_log("Migration failed: " . $migEx->getMessage());
         }
     }
 } catch (Exception $e) {
