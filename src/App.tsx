@@ -26,7 +26,7 @@ import { getApiUrl, PROXY_URL } from './config';
 import { SetupWizard } from './components/SetupWizard';
 const App: React.FC = () => {
   useEffect(() => {
-    document.title = "PayStream Admin v2.2.1-MySQL";
+    document.title = "PayStream Admin v2.2.1-DEBUG";
   }, []);
 
   // Check for Public Payment Route
@@ -78,16 +78,20 @@ const App: React.FC = () => {
     fetch(getApiUrl('check_setup'))
       .then(res => res.json())
       .then(data => {
+        // DEBUG: Alert the raw data to see what the server is saying
+        alert(`[DEBUG v2.2.1 Check]\nInstalled: ${data.installed}\nStatus: ${data.status}\nFull: ${JSON.stringify(data)}`);
+
         if (data.status === 'needs_setup' || data.installed === false) {
           setNeedsSetup(true);
+        } else {
+          // Explicitly log success
+          console.log('[DEBUG] System considers itself installed.');
         }
         setIsCheckingSetup(false);
       })
       .catch((err) => {
+        alert(`[DEBUG v2.2.1 Error]\nConnection Failed: ${err.message}\nCheck Network Tab in F12.`);
         console.error("Setup check failed:", err);
-        // If check fails (e.g. 500 error), it might be uninitialized. 
-        // We shouldn't fail silently to login.
-        alert("系统状态检查失败，请检查控制台网络请求 (Network Tab)。\n可能是 api.php 报错或网络问题。");
         setIsCheckingSetup(false);
       });
 
