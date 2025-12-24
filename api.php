@@ -9,7 +9,7 @@
  */
 
 // Version Configuration
-define('APP_VERSION', 'v2.2.23');
+define('APP_VERSION', 'v2.2.24');
 
 // Prevent any output before headers
 ob_start();
@@ -453,6 +453,53 @@ function updateSettingsData($newData) {
 }
 
 /**
+ * Payment Pages helpers
+ */
+function getPaymentPagesData() {
+    try {
+        $db = DB::getInstance();
+        return $db->fetchAll("SELECT * FROM payment_pages ORDER BY createdAt DESC");
+    } catch (Exception $e) {
+        return [];
+    }
+}
+
+function updatePaymentPagesData($newData) {
+    try {
+        $db = DB::getInstance();
+        $pdo = $db->getConnection();
+        $pdo->beginTransaction();
+
+        // Standard approach for bulk sync: Clear and re-insert
+        $pdo->exec("DELETE FROM payment_pages");
+        
+        $stmt = $pdo->prepare("INSERT INTO payment_pages (id, title, channelId, minAmount, maxAmount, notice, isOpen, ipLimitTime, ipLimitCount, ipWhitelist, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        
+        foreach ($newData as $page) {
+            $stmt->execute([
+                $page['id'],
+                $page['title'],
+                isset($page['channelId']) ? $page['channelId'] : 'default',
+                isset($page['minAmount']) ? $page['minAmount'] : null,
+                isset($page['maxAmount']) ? $page['maxAmount'] : null,
+                isset($page['notice']) ? $page['notice'] : null,
+                isset($page['isOpen']) ? ($page['isOpen'] ? 1 : 0) : 1,
+                isset($page['ipLimitTime']) ? $page['ipLimitTime'] : null,
+                isset($page['ipLimitCount']) ? $page['ipLimitCount'] : null,
+                isset($page['ipWhitelist']) ? $page['ipWhitelist'] : null,
+                isset($page['createdAt']) ? $page['createdAt'] : (time() * 1000)
+            ]);
+        }
+        
+        $pdo->commit();
+        return true;
+    } catch (Exception $e) {
+        if (isset($pdo) && $pdo->inTransaction()) $pdo->rollBack();
+        return $e->getMessage();
+    }
+}
+
+/**
  * v2.1.6: Register a waiter in FIFO queue using ClientId instead of IP.
  * This allows multiple tabs/windows on the same machine to have independent queue spots.
  */
@@ -845,6 +892,20 @@ function performSetup($adminPassword, $dbConfig) {
                 remark VARCHAR(255),
                 lastUpdated VARCHAR(50)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+            CREATE TABLE IF NOT EXISTS payment_pages (
+                id VARCHAR(100) PRIMARY KEY,
+                title VARCHAR(255),
+                channelId VARCHAR(100),
+                minAmount DECIMAL(10,2),
+                maxAmount DECIMAL(10,2),
+                notice TEXT,
+                isOpen TINYINT(1) DEFAULT 1,
+                ipLimitTime DECIMAL(10,2),
+                ipLimitCount INT,
+                ipWhitelist TEXT,
+                createdAt BIGINT
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
         ");
         
         // v2.2.17 Auto-Migration: Ensure 'lockTicket' column exists for existing installations
@@ -1064,6 +1125,15 @@ try {
                 jsonResponse($db->fetchAll("SELECT * FROM ip_logs ORDER BY timestamp DESC"));
             } catch (Exception $e) {
                 jsonResponse([]);
+            }
+            break;
+        case 'payment_pages':
+            if ($method === 'GET') {
+                jsonResponse(getPaymentPagesData());
+            } else {
+                $input = json_decode(file_get_contents('php://input'), true);
+                $res = updatePaymentPagesData($input);
+                jsonResponse(['success' => $res === true, 'error' => $res !== true ? $res : null]);
             }
             break;
         case 'add_order':
