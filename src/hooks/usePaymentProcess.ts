@@ -92,7 +92,8 @@ export const usePaymentProcess = () => {
                         internalOrderId: currentOrderId,
                         filters: {
                             specificShopId: freshSettings?.productMode === 'shop' ? freshSettings?.specificShopId : null,
-                            validityDuration: freshSettings?.validityDuration || 180
+                            validityDuration: freshSettings?.validityDuration || 180,
+                            ignorePrice: true // Test Payment: Match ANY item, then change price
                         }
                     })
                 });

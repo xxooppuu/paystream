@@ -9,7 +9,7 @@
  */
 
 // Version Configuration
-define('APP_VERSION', 'v2.2.14');
+define('APP_VERSION', 'v2.2.15');
 
 // Prevent any output before headers
 ob_start();
@@ -535,13 +535,18 @@ function matchAndLockItem($targetPrice, $internalOrderId, $filters = []) {
         $specificShopId = isset($filters['specificShopId']) ? (string)$filters['specificShopId'] : null;
 
         $sql = "SELECT i.*, s.cookie, s.remark, s.csrfToken, s.status as shopStatus 
-                FROM inventory i 
-                JOIN shops s ON i.shopId = s.id 
-                WHERE abs(i.price - ?) < 0.01 
-                AND (i.status LIKE '%出售%' OR i.status LIKE '%在售%')
+                FROM inventory i
+                JOIN shops s ON i.shopId = s.id
+                WHERE (i.status LIKE '%出售%' OR i.status LIKE '%在售%')
                 AND (i.internalStatus = 'idle' OR (i.internalStatus = 'occupied' AND (? - i.lastMatchedTime) > ?))";
+
+        $params = [$nowMs, $validityMs];
         
-        $params = [$price, $nowMs, $validityMs];
+        // Price Match (unless ignored)
+        if (empty($filters['ignorePrice'])) {
+             $sql .= " AND abs(i.price - ?) < 0.01";
+             $params[] = $price;
+        }
         if ($specificShopId) {
             $sql .= " AND i.shopId = ?";
             $params[] = $specificShopId;
