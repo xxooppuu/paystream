@@ -26,7 +26,7 @@ import { getApiUrl, PROXY_URL } from './config';
 import { SetupWizard } from './components/SetupWizard';
 const App: React.FC = () => {
   useEffect(() => {
-    document.title = "PayStream Admin v2.2.6-NUCLEAR";
+    document.title = "PayStream Admin v2.2.8";
   }, []);
 
   // Check for Public Payment Route
@@ -99,7 +99,11 @@ const App: React.FC = () => {
         setIsCheckingSetup(false);
       });
 
-    fetchOrders();
+    // Only fetch data if setup is complete
+    if (!needsSetup && !isCheckingSetup) {
+      fetchOrders();
+    }
+
     fetch(getApiUrl('settings'))
       .then(res => res.json())
       .then(data => {

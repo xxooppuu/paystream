@@ -294,16 +294,17 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ onComplete }) => {
 
                     {/* Step 4: Complete */}
                     {step === 4 && (
-                        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                            <div className="text-center">
-                                <div className="w-16 h-16 bg-green-500/20 rounded-full flex items-center justify-center mx-auto mb-4 border border-green-500/30">
-                                    <CheckCircle2 className="w-10 h-10 text-green-500" />
+                        <div className="space-y-6 animate-in fade-in zoom-in duration-500">
+                            <div className="text-center space-y-4">
+                                <div className="w-20 h-20 bg-blue-500/20 rounded-2xl flex items-center justify-center mx-auto mb-6 backdrop-blur-sm shadow-xl border border-blue-400/30">
+                                    <Database className="w-10 h-10 text-blue-400" />
                                 </div>
-                                <h2 className="text-xl font-semibold text-white">系统已就绪!</h2>
-                                <p className="text-gray-400 mt-2 text-sm">
-                                    MySQL数据库已成功初始化，所有数据迁移完毕。
-                                </p>
+                                <h1 className="text-3xl font-bold text-white tracking-tight">PayStream v2.2.8</h1>
+                                <p className="text-blue-100 text-lg">系统初始化向导 (MySQL 版)</p>
                             </div>
+                            <p className="text-gray-400 mt-2 text-sm">
+                                MySQL数据库已成功初始化，所有数据迁移完毕。
+                            </p>
 
                             <div className="bg-[#0f172a] rounded-xl p-4 text-xs font-mono text-blue-300 space-y-1 max-h-32 overflow-y-auto border border-[#334155]">
                                 <div className="text-gray-500 mb-1 uppercase tracking-wider">部署报告:</div>

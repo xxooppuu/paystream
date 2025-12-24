@@ -9,7 +9,7 @@
  */
 
 // Version Configuration
-define('APP_VERSION', 'v2.2.1-MySQL');
+define('APP_VERSION', 'v2.2.8');
 
 // Prevent any output before headers
 ob_start();
