@@ -9,7 +9,7 @@
  */
 
 // Version Configuration
-define('APP_VERSION', 'v2.2.17');
+define('APP_VERSION', 'v2.2.18');
 
 // Prevent any output before headers
 ob_start();
@@ -139,6 +139,25 @@ if (!$isInstalled && !in_array($act, ['setup', 'get_ip', 'check_setup', 'test_db
 // 2. Initialize DB if potentially installed or for setup
 try {
     $db = DB::getInstance();
+    
+    // v2.2.18: Global Migration Check (Ensures lockTicket column exists even on existing installs)
+    if ($isInstalled) {
+        try {
+            $pdo = $db->getConnection();
+            // Robust check: check if column exists
+            $checkInv = $pdo->query("SHOW COLUMNS FROM inventory LIKE 'lockTicket'")->fetch();
+            if (!$checkInv) {
+                $pdo->exec("ALTER TABLE inventory ADD COLUMN lockTicket VARCHAR(100)");
+            }
+            $checkOrd = $pdo->query("SHOW COLUMNS FROM orders LIKE 'lockTicket'")->fetch();
+            if (!$checkOrd) {
+                $pdo->exec("ALTER TABLE orders ADD COLUMN lockTicket VARCHAR(100)");
+            }
+        } catch (Exception $migEx) {
+            // Silently ignore or log migration errors to prevent total system failure
+            error_log("Migration v2.2.18 failed: " . $migEx->getMessage());
+        }
+    }
 } catch (Exception $e) {
     if (!in_array($act, ['setup', 'get_ip', 'check_setup', 'test_db_connection'])) {
         jsonResponse(['error' => 'Database connection failed: ' . $e->getMessage()], 500);
