@@ -9,7 +9,7 @@
  */
 
 // Version Configuration
-define('APP_VERSION', 'v2.2.16');
+define('APP_VERSION', 'v2.2.17');
 
 // Prevent any output before headers
 ob_start();
@@ -871,21 +871,18 @@ function performSetup($adminPassword, $dbConfig) {
             CREATE TABLE IF NOT EXISTS inventory (
                 id VARCHAR(100) PRIMARY KEY,
                 shopId VARCHAR(100),
-                childOrderId VARCHAR(100),
-                orderId VARCHAR(100),
-                infoId VARCHAR(100),
-                parentTitle VARCHAR(500),
-                picUrl VARCHAR(500),
-                price VARCHAR(50),
-                priceNum INT,
+                accountId VARCHAR(100),
                 status VARCHAR(50),
                 internalStatus VARCHAR(50) DEFAULT 'idle',
-                lastMatchedTime VARCHAR(50),
+                lastMatchedTime BIGINT DEFAULT 0,
                 lockTicket VARCHAR(100),
-                FOREIGN KEY (shopId) REFERENCES shops(id) ON DELETE CASCADE,
-                INDEX idx_shop (shopId),
-                INDEX idx_price (price),
-                INDEX idx_status (internalStatus)
+                title VARCHAR(255),
+                price DECIMAL(10,2),
+                picUrl TEXT,
+                parentTitle TEXT,
+                childOrderId VARCHAR(100),
+                infoId VARCHAR(100),
+                FOREIGN KEY (shopId) REFERENCES shops(id) ON DELETE CASCADE
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
             
             CREATE TABLE IF NOT EXISTS orders (
@@ -902,6 +899,7 @@ function performSetup($adminPassword, $dbConfig) {
                 accountId VARCHAR(100),
                 buyerId VARCHAR(100),
                 internalOrderId VARCHAR(100),
+                lockTicket VARCHAR(100),
                 INDEX idx_internal (internalOrderId),
                 INDEX idx_status (status),
                 INDEX idx_created (createdAt)
@@ -923,6 +921,20 @@ function performSetup($adminPassword, $dbConfig) {
                 lastUpdated VARCHAR(50)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
         ");
+        
+        // v2.2.17 Auto-Migration: Ensure 'lockTicket' column exists for existing installations
+        try {
+            // Check if column exists, if not adds it.
+            // Using a simple try-catch with ALTER is the most robust "add if missing" for MySQL without complex logic
+            $pdo->exec("ALTER TABLE inventory ADD COLUMN lockTicket VARCHAR(100)");
+        } catch (Exception $e) {
+            // Column likely exists, ignore
+        }
+        try {
+            $pdo->exec("ALTER TABLE orders ADD COLUMN lockTicket VARCHAR(100)");
+        } catch (Exception $e) {
+            // Column likely exists, ignore
+        }
 
         // 4. Migration from JSON
         $migrated = [];
