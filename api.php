@@ -1012,7 +1012,7 @@ try {
                 if (is_array($input)) {
                     $pdo = $db->getConnection();
                     $pdo->beginTransaction();
-                    $stmt = $pdo->prepare("INSERT OR REPLACE INTO buyers (id, cookie, remark, lastUpdated) VALUES (?, ?, ?, ?)");
+                    $stmt = $pdo->prepare("INSERT INTO buyers (id, cookie, remark, lastUpdated) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE cookie=VALUES(cookie), remark=VALUES(remark), lastUpdated=VALUES(lastUpdated)");
                     foreach ($input as $b) {
                         $stmt->execute([
                             $b['id'], 
