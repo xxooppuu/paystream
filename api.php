@@ -9,7 +9,7 @@
  */
 
 // Version Configuration
-define('APP_VERSION', 'v2.2.19');
+define('APP_VERSION', 'v2.2.20');
 
 // Prevent any output before headers
 ob_start();
@@ -313,8 +313,11 @@ function handleFileRequest($filename, $default = []) {
 function atomicAppendOrder($orderData) {
     try {
         $db = DB::getInstance();
-        $sql = "INSERT OR REPLACE INTO orders (id, orderNo, customer, amount, currency, status, channel, method, createdAt, inventoryId, accountId, buyerId, internalOrderId) 
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        $sql = "INSERT INTO orders (id, orderNo, customer, amount, currency, status, channel, method, createdAt, inventoryId, accountId, buyerId, internalOrderId) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON DUPLICATE KEY UPDATE 
+                orderNo=VALUES(orderNo), customer=VALUES(customer), amount=VALUES(amount), status=VALUES(status), 
+                inventoryId=VALUES(inventoryId), accountId=VALUES(accountId), buyerId=VALUES(buyerId), internalOrderId=VALUES(internalOrderId)";
         
         $db->query($sql, [
             $orderData['id'],
@@ -435,7 +438,7 @@ function updateSettingsData($newData) {
         $db = DB::getInstance();
         foreach ($newData as $k => $v) {
             $val = is_scalar($v) ? $v : json_encode($v);
-            $db->query("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", [$k, $val]);
+            $db->query("INSERT INTO settings (`key`, `value`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `value`=VALUES(`value`)", [$k, $val]);
         }
         return true;
     } catch (Exception $e) {

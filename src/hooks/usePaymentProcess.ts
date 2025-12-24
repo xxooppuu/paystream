@@ -157,7 +157,7 @@ export const usePaymentProcess = () => {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    targetUrl: `https://app.zhuanzhuan.com/zzopen/c2b_consignment/changePrice?argueSwitch=true&buyPrice=0&orderId=${item.id}&infoPrice=${cents}&infoShowPrice=${cents}&selectedFastWithdrawService=0`,
+                    targetUrl: `https://app.zhuanzhuan.com/zzopen/c2b_consignment/changePrice?argueSwitch=true&buyPrice=0&orderId=${item.childOrderId}&infoPrice=${cents}&infoShowPrice=${cents}&selectedFastWithdrawService=0`,
                     method: 'GET',
                     cookie: sellerAccount.cookie,
                     headers: {

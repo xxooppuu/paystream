@@ -217,12 +217,6 @@ const App: React.FC = () => {
 
     let success = await performOrderCancellation(order);
 
-    if (!success) {
-      if (confirm('API取消失败（可能订单已在外部取消或过期）。\n是否强制在本地完成取消并释放库存？')) {
-        success = true; // Proceed with local cleanup
-      }
-    }
-
     if (success) {
       // Update Order Status locally
       const updatedOrders = orders.map(o =>
@@ -248,6 +242,8 @@ const App: React.FC = () => {
       // Release Inventory
       await releaseInventoryForOrder(order);
       alert('订单已取消并释放库存');
+    } else {
+      alert('API取消失败，请检查账号状态或手动在转转 App 取消');
     }
   };
 
