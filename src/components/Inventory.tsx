@@ -636,13 +636,18 @@ export const Inventory: React.FC = () => {
                                             {item.status}
                                         </div>
                                         {/* Internal Status Badge */}
-                                        {item.internalStatus === 'occupied' && (
+                                        {item.internalStatus === 'occupied' ? (
                                             <div className="text-xs px-2 py-1 rounded backdrop-blur-sm font-medium bg-amber-500/90 text-white shadow-sm animate-pulse flex items-center gap-1 cursor-pointer hover:bg-amber-600 transition-colors"
                                                 onClick={(e) => { e.stopPropagation(); handleManualRelease(item); }}
                                                 title="点击手动释放"
                                             >
                                                 <Unlock className="w-3 h-3" />
                                                 <span>占用中</span>
+                                            </div>
+                                        ) : (
+                                            <div className="text-xs px-2 py-1 rounded backdrop-blur-sm font-medium bg-emerald-500/90 text-white shadow-sm flex items-center gap-1">
+                                                <span className="w-1.5 h-1.5 bg-white rounded-full"></span>
+                                                <span>空闲</span>
                                             </div>
                                         )}
                                     </div>

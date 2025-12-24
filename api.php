@@ -9,7 +9,7 @@
  */
 
 // Version Configuration
-define('APP_VERSION', 'v2.2.11');
+define('APP_VERSION', 'v2.2.12');
 
 // Prevent any output before headers
 ob_start();
@@ -555,8 +555,20 @@ function matchAndLockItem($targetPrice, $internalOrderId, $filters = []) {
         $pos = array_search($internalOrderId, $queueIds);
 
         if ($pos === false) {
-            $pdo->rollBack();
-            return "请先创建排队订单 (ID: $internalOrderId)";
+            // Self-healing: If order not found in queue (maybe simple_api add_order failed), create it now
+            $db->query("INSERT INTO orders (id, customer, amount, status, channel, method, createdAt, internalOrderId) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", [
+                $internalOrderId, 'Guest', $price, 'queueing', 'Zhuanzhuan', 'WeChat', date('c', $now), $internalOrderId
+            ]);
+            
+            // Re-fetch queue
+            $queue = $db->fetchAll("SELECT id FROM orders WHERE abs(amount - ?) < 0.01 AND status = 'queueing' ORDER BY createdAt ASC", [$price]);
+            $queueIds = array_column($queue, 'id');
+            $pos = array_search($internalOrderId, $queueIds);
+            
+            if ($pos === false) {
+                 $pdo->rollBack();
+                 return "排队系统异常，无法创建订单 (ID: $internalOrderId)";
+            }
         }
 
         if ($pos >= $N) {
