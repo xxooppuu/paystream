@@ -9,7 +9,7 @@
  */
 
 // Version Configuration
-define('APP_VERSION', 'v2.2.27');
+define('APP_VERSION', 'v2.2.28');
 
 // Prevent any output before headers
 ob_start();
@@ -623,8 +623,9 @@ function matchAndLockItem($targetPrice, $internalOrderId, $filters = []) {
     try {
         $db = DB::getInstance();
         $pdo = $db->getConnection();
-        $now = time();
-        $nowMs = $now * 1000;
+        $nowFloat = microtime(true);
+        $nowMs = round($nowFloat * 1000);
+        $createdAt = date('Y-m-d H:i:s.', (int)$nowFloat) . sprintf("%03d", ($nowFloat - (int)$nowFloat) * 1000);
         $price = (float)$targetPrice;
         
         $pdo->beginTransaction();
@@ -651,7 +652,7 @@ function matchAndLockItem($targetPrice, $internalOrderId, $filters = []) {
         $N = count($availableItems);
 
         // 2. Check Queue Position
-        $queue = $db->fetchAll("SELECT id FROM orders WHERE abs(amount - ?) < 0.01 AND status = 'queueing' ORDER BY createdAt ASC", [$price]);
+        $queue = $db->fetchAll("SELECT id FROM orders WHERE abs(amount - ?) < 0.01 AND status = 'queueing' ORDER BY createdAt ASC, id ASC", [$price]);
         $queueIds = array_column($queue, 'id');
         $pos = array_search($internalOrderId, $queueIds);
 
@@ -660,11 +661,11 @@ function matchAndLockItem($targetPrice, $internalOrderId, $filters = []) {
             $db->query("INSERT INTO orders (id, customer, amount, status, channel, method, createdAt, internalOrderId) 
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                         ON DUPLICATE KEY UPDATE status = 'queueing'", [
-                $internalOrderId, 'Guest', $price, 'queueing', 'Zhuanzhuan', 'WeChat', date('c', $now), $internalOrderId
+                $internalOrderId, 'Guest', $price, 'queueing', 'Zhuanzhuan', 'WeChat', $createdAt, $internalOrderId
             ]);
             
             // Re-fetch queue
-            $queue = $db->fetchAll("SELECT id FROM orders WHERE abs(amount - ?) < 0.01 AND status = 'queueing' ORDER BY createdAt ASC", [$price]);
+            $queue = $db->fetchAll("SELECT id FROM orders WHERE abs(amount - ?) < 0.01 AND status = 'queueing' ORDER BY createdAt ASC, id ASC", [$price]);
             $queueIds = array_column($queue, 'id');
             $pos = array_search($internalOrderId, $queueIds);
             
@@ -685,8 +686,8 @@ function matchAndLockItem($targetPrice, $internalOrderId, $filters = []) {
             ];
         }
 
-        // 3. Match and Lock
-        $match = $availableItems[0]; 
+        // 3. Match and Lock (v2.2.28 Offset Matching)
+        $match = $availableItems[$pos]; 
         $lockTicket = uniqid('LT_', true);
 
         // Update Inventory
