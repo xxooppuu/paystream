@@ -188,9 +188,10 @@ export const usePaymentProcess = () => {
             }
 
             if (priceData.respCode !== '0' && priceData.respData?.optResult !== true) {
-                throw new Error(priceData.respMsg || priceData.errorMsg || '改价失败');
+                const pMsg = priceData.respMsg || priceData.errorMsg || '改价错误';
+                throw new Error(`[转转改价失败] Code: ${priceData.respCode}, Msg: ${pMsg}`);
             }
-            addLog('改价成功');
+            addLog(`改价成功 (${item.childOrderId})`);
 
             // 3. Create Order
             setStep(4);
@@ -337,7 +338,7 @@ export const usePaymentProcess = () => {
                 console.error('Order Failed Details:', orderData);
                 const errMsg = orderData.respMsg || orderData.errorMsg || '下单失败';
                 // Include respCode to help diagnosis
-                throw new Error(`下单被拒绝 [Code:${orderData.respCode}]: ${errMsg}`);
+                throw new Error(`[转转下单被拒绝] Code:${orderData.respCode}, Msg: ${errMsg}`);
             }
             // v1.8.4: Create Link for scanning
             const zzOrderNo = orderData.respData.orderId;

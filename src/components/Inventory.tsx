@@ -274,6 +274,10 @@ export const Inventory: React.FC = () => {
             }
 
             alert(`✅ 成功释放 ${occupiedItems.length} 个商品，并取消了 ${cancelCount} 个关联订单！`);
+            // v2.2.20: Force refresh from backend to ensure state sync
+            if (typeof (window as any).refreshShops === 'function') {
+                (window as any).refreshShops();
+            }
         } catch (e) {
             console.error(e);
             alert('释放过程中发生错误');
@@ -310,6 +314,11 @@ export const Inventory: React.FC = () => {
 
         // v2.1.4: Use Atomic Release via Utility
         await releaseInventory(item.id, item.accountId);
+
+        // v2.2.20: Force refresh from backend to ensure state sync
+        if (typeof (window as any).refreshShops === 'function') {
+            (window as any).refreshShops();
+        }
     };
 
     /**

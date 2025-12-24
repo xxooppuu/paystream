@@ -566,15 +566,10 @@ function matchAndLockItem($targetPrice, $internalOrderId, $filters = []) {
         $sql = "SELECT i.*, s.cookie, s.remark, s.csrfToken, s.status as shopStatus 
                 FROM inventory i
                 JOIN shops s ON i.shopId = s.id
-                WHERE (i.status LIKE '%出售%' OR i.status LIKE '%在售%')
+                WHERE (i.status LIKE '%在售%' OR i.status LIKE '%待卖%' OR i.status LIKE '%出售%' OR i.status LIKE '%代卖%')
                 AND (i.internalStatus = 'idle' OR (i.internalStatus = 'occupied' AND (? - i.lastMatchedTime) > ?))";
 
         $params = [$nowMs, $validityMs];
-        
-        // Workflow Alignment:
-        // User confirmed flow is "Match Idle Item -> Change Price".
-        // Therefore, we DO NOT match by price. We match ANY available capacity.
-        // Price filtering is removed permanently.
         
         if ($specificShopId) {
             $sql .= " AND i.shopId = ?";
@@ -583,6 +578,11 @@ function matchAndLockItem($targetPrice, $internalOrderId, $filters = []) {
         
         $availableItems = $db->fetchAll($sql, $params);
         $N = count($availableItems);
+
+        if ($N === 0) {
+            $pdo->rollBack();
+            return "当前没有任何空闲商品，请在库存页面手动释放或等待过期释放";
+        }
 
         // 2. Check Queue Position
         $queue = $db->fetchAll("SELECT id FROM orders WHERE abs(amount - ?) < 0.01 AND status = 'queueing' ORDER BY createdAt ASC", [$price]);
@@ -1079,6 +1079,18 @@ try {
                 jsonResponse(['error' => $res], 500);
             }
             break;
+        case 'release_inventory':
+            if ($_SERVER['REQUEST_METHOD'] !== 'POST') jsonResponse(['error' => 'POST required'], 405);
+            $input = json_decode(file_get_contents('php://input'), true);
+            if (!$input || !isset($input['id'])) jsonResponse(['error' => 'Missing inventory ID'], 400);
+            
+            $res = atomicUnlockItem($input['id'], isset($input['accountId']) ? $input['accountId'] : null);
+            if ($res === true) {
+                jsonResponse(['success' => true]);
+            } else {
+                jsonResponse(['error' => $res], 500);
+            }
+            break;
         case 'match_and_lock':
             if ($_SERVER['REQUEST_METHOD'] !== 'POST') jsonResponse(['error' => 'POST required'], 405);
             $input = json_decode(file_get_contents('php://input'), true);
@@ -1150,11 +1162,19 @@ try {
             $error = curl_error($ch);
             curl_close($ch);
 
-            if ($error) jsonResponse(['error' => "Proxy Error: $error"], 500);
+            if ($error) jsonResponse(['error' => "Proxy Error: $error", 'code' => 'CURL_FAIL'], 500);
 
+            // Forward HTTP code and response body
+            if (ob_get_length()) ob_clean();
             http_response_code($httpCode);
-            header('Content-Type: application/json'); 
-            echo $response;
+            header('Content-Type: application/json');
+            // If response is not JSON, try to wrap it for logging
+            $decoded = json_decode($response, true);
+            if ($decoded === null && json_last_error() !== JSON_ERROR_NONE) {
+                 echo json_encode(['raw' => $response, 'httpCode' => $httpCode, 'warning' => 'Response is not valid JSON']);
+            } else {
+                 echo $response;
+            }
             break;
         default:
             jsonResponse(['error' => 'Unknown action'], 404);
