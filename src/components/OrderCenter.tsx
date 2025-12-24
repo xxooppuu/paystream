@@ -168,7 +168,7 @@ export const OrderCenter: React.FC<OrderCenterProps> = ({ orders, onCancelOrder,
                                             <span className="text-slate-500 text-sm">{order.orderNo}</span>
                                         </td>
                                         <td className="p-4">
-                                            <span className="font-semibold text-slate-800">{order.amount.toFixed(2)}元</span>
+                                            <span className="font-semibold text-slate-800">{Number(order.amount).toFixed(2)}元</span>
                                         </td>
                                         <td className="p-4">
                                             <div className="flex items-center gap-2">
