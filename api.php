@@ -14,9 +14,23 @@ define('APP_VERSION', 'v2.2.1-MySQL');
 // Prevent any output before headers
 ob_start();
 
+// Handle Fatal Errors & Parse Errors gracefully
+register_shutdown_function(function() {
+    $error = error_get_last();
+    if ($error && ($error['type'] === E_ERROR || $error['type'] === E_PARSE || $error['type'] === E_CORE_ERROR || $error['type'] === E_COMPILE_ERROR)) {
+        // Clear any partial output
+        if (ob_get_length()) ob_clean();
+        http_response_code(500);
+        header('Content-Type: application/json');
+        echo json_encode(['error' => 'Critical PHP Error', 'details' => $error], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+});
+
 // Suppress PHP warnings/notices that might break JSON
-error_reporting(0);
+error_reporting(E_ALL); // Log everything to file, but display none
 ini_set('display_errors', '0');
+ini_set('log_errors', '1');
 
 header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Methods: POST, GET, OPTIONS");
@@ -1023,6 +1037,11 @@ try {
                 jsonResponse(['success' => false, 'error' => 'Connection failed: ' . $e->getMessage()], 500);
             }
             break;
+        // Simple ping to verify API is reachable
+        case 'ping':
+             jsonResponse(['status' => 'ok', 'message' => 'API is working', 'version' => APP_VERSION]);
+             break;
+
         case 'setup':
             $input = json_decode(file_get_contents('php://input'), true);
             $password = isset($input['password']) ? $input['password'] : null;
