@@ -499,9 +499,12 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
                                         </div>
                                         <a
                                             href={paymentLink}
-                                            target="_blank"
-                                            rel="noreferrer"
-                                            className="w-full bg-green-600 hover:bg-green-700 text-white py-4 rounded-xl font-bold text-lg text-center flex items-center justify-center gap-2 transition-colors mb-8 shadow-lg shadow-green-200"
+                                            onClick={(e) => {
+                                                // v2.2.85: Force navigation for better mobile support
+                                                e.preventDefault();
+                                                window.location.href = paymentLink;
+                                            }}
+                                            className="w-full bg-green-600 hover:bg-green-700 text-white py-4 rounded-xl font-bold text-lg text-center flex items-center justify-center gap-2 transition-colors mb-8 shadow-lg shadow-green-200 cursor-pointer active:scale-95 transform duration-100"
                                         >
                                             <Smartphone className="w-5 h-5" />
                                             <span>点击跳转微信支付</span>
