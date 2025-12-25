@@ -9,7 +9,7 @@
  */
 
 // Version Configuration
-define('APP_VERSION', 'v2.2.43');
+define('APP_VERSION', 'v2.2.44');
 
 // Prevent any output before headers
 ob_start();
@@ -861,12 +861,22 @@ function proactiveCleanup() {
             AND (UNIX_TIMESTAMP() - UNIX_TIMESTAMP(STR_TO_DATE(LEFT(createdAt, 19), '%Y-%m-%d %H:%i:%s'))) > 3600
         ")->execute();
 
-        // QUEUEING > 2 mins
+        // QUEUEING > 30s Heartbeat Timeout (v2.2.44)
         $pdo->prepare("
             UPDATE orders 
             SET status = 'cancelled' 
-            WHERE UPPER(status) = 'QUEUEING' 
-            AND (UNIX_TIMESTAMP() - UNIX_TIMESTAMP(STR_TO_DATE(LEFT(createdAt, 19), '%Y-%m-%d %H:%i:%s'))) > 120
+            WHERE status = 'queueing' 
+            AND lastHeartbeat > 0 
+            AND (? - lastHeartbeat) > 30000
+        ")->execute([$nowMs]);
+
+        // Long-stale QUEUEING (fallback if heartbeat never started)
+        $pdo->prepare("
+            UPDATE orders 
+            SET status = 'cancelled' 
+            WHERE status = 'queueing' 
+            AND (lastHeartbeat = 0 OR lastHeartbeat IS NULL)
+            AND (UNIX_TIMESTAMP() - UNIX_TIMESTAMP(STR_TO_DATE(LEFT(createdAt, 19), '%Y-%m-%d %H:%i:%s'))) > 300
         ")->execute();
 
         $pdo->commit();
