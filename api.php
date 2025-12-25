@@ -9,7 +9,7 @@
  */
 
 // Version Configuration
-define('APP_VERSION', 'v2.2.59');
+define('APP_VERSION', 'v2.2.60');
 
 // Prevent any output before headers
 ob_start();
@@ -369,6 +369,9 @@ function atomicAppendOrder($orderData) {
                 buyerId=COALESCE(VALUES(buyerId), buyerId), 
                 internalOrderId=VALUES(internalOrderId)";
         
+        // v2.2.60: Detect status transition to 'cancelled' and trigger inventory release
+        $existing = $db->fetchOne("SELECT status, inventoryId FROM orders WHERE id = ?", [$orderData['id']]);
+        
         $nowMs = round(microtime(true) * 1000);
         $db->query($sql, [
             $orderData['id'],
@@ -386,6 +389,14 @@ function atomicAppendOrder($orderData) {
             isset($orderData['buyerId']) ? $orderData['buyerId'] : null,
             isset($orderData['internalOrderId']) ? $orderData['internalOrderId'] : $orderData['id']
         ]);
+
+        // If the order was transition to 'cancelled', release inventory specifically
+        if ($orderData['status'] === 'cancelled' && $existing && in_array($existing['status'], ['pending', 'queueing']) && !empty($existing['inventoryId'])) {
+            $db->execute("UPDATE inventory SET internalStatus = 'idle', lastMatchedTime = NULL, lockTicket = NULL WHERE id = ?", [$existing['inventoryId']]);
+            $db->execute("INSERT INTO lock_logs (orderId, action, inventoryId, message, timestamp_ms) VALUES (?, ?, ?, ?, ?)", [
+                $orderData['id'], 'INVENTORY_RELEASE', $existing['inventoryId'], "Auto-released via status sync (Transition to CANCELLED)", $nowMs
+            ]);
+        }
 
         // v2.2.50: Price Auto-Sync to Inventory
         if ($orderData['status'] === 'pending' && !empty($orderData['inventoryId']) && !empty($orderData['amount'])) {
