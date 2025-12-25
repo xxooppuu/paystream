@@ -25,7 +25,7 @@ import { ViewState, Order, OrderStatus } from './types';
 import { getApiUrl, PROXY_URL, APP_VERSION } from './config';
 import { SetupWizard } from './components/SetupWizard';
 const App: React.FC = () => {
-  document.title = 'PayStream Admin v2.2.71';
+  document.title = 'PayStream Admin v2.2.71 (FIXED)';
 
   // Check for Public Payment Route
   const [publicPayId, setPublicPayId] = useState<string | null>(null);
@@ -34,6 +34,16 @@ const App: React.FC = () => {
     const params = new URLSearchParams(window.location.search);
     const payId = params.get('pay');
     if (payId) setPublicPayId(payId);
+
+    // v2.2.71: Force Unregister Legacy Service Workers
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(function (registrations) {
+        for (let registration of registrations) {
+          console.log('Unregistering SW:', registration);
+          registration.unregister();
+        }
+      });
+    }
   }, []);
 
   // Global State
