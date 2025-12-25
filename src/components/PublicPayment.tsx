@@ -19,8 +19,8 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
     const [clockDrift, setClockDrift] = useState(0);
     const [ipLimitError, setIpLimitError] = useState<string | null>(null);
     const [queueTimeLeft, setQueueTimeLeft] = useState<number | null>(null);
-    const [orderInfo, setOrderInfo] = useState<{ internalOrderId: string; amount: number } | null>(null);
     const [ipUsage, setIpUsage] = useState<string | null>(null);
+    const [finalStep, setFinalStep] = useState<number | null>(null); // v2.2.64: Persist final error state
 
     useEffect(() => {
         const ua = navigator.userAgent.toLowerCase();
@@ -58,7 +58,8 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
 
     // Countdown Logic
     useEffect(() => {
-        if (step === 5 && orderCreatedAt && settings?.validityDuration) {
+        const currentStep = finalStep || step;
+        if (currentStep === 5 && orderCreatedAt && settings?.validityDuration) {
             const duration = Number(settings.validityDuration);
             const timer = setInterval(() => {
                 const now = Date.now();
@@ -75,7 +76,7 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
             }, 1000);
             return () => clearInterval(timer);
         }
-    }, [step, orderCreatedAt, settings?.validityDuration]);
+    }, [step, finalStep, orderCreatedAt, settings?.validityDuration]);
 
     useEffect(() => {
         if (queueEndTime) {
@@ -190,7 +191,7 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
         try {
             const info = await startPayment(adjustedAmount);
             if (info) {
-                setOrderInfo({ internalOrderId: info.id, amount: info.amount });
+                // setOrderInfo({ internalOrderId: info.id, amount: info.amount }); // Removed as per v2.2.64, use internalOrderId and amount from hook
                 await saveIpLog(); // Successfully generated order, log it
                 await checkIpLimit(true); // Silent refresh count displayed in footer
             }
@@ -270,6 +271,26 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
                 {/* Content Area */}
                 <div className="p-8">
                     {(() => {
+                        const currentStep = finalStep || step;
+
+                        // v2.2.64: Emergency/Admin Cancelled State
+                        if (currentStep === 8) {
+                            return (
+                                <div className="text-center py-12 space-y-6 animate-fade-in">
+                                    <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6 text-red-600">
+                                        <XCircle className="w-10 h-10" />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <h3 className="text-xl font-bold text-slate-800">该订单已失效</h3>
+                                        <p className="text-slate-500 text-sm">订单已被后台取消，或匹配商品已失效</p>
+                                    </div>
+                                    <button onClick={() => window.location.reload()} className="w-full bg-slate-800 text-white py-3 rounded-xl font-bold">
+                                        返回主页
+                                    </button>
+                                </div>
+                            );
+                        }
+
                         // 1. 商家休息中 (最高优先级)
                         if (config.isOpen === false) {
                             return (
@@ -298,7 +319,7 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
                         }
 
                         // 2. IP 限制 (仅在订单生成前生效)
-                        if (ipLimitError && step < 4) {
+                        if (currentStep === 0 && !loading && ipLimitError) {
                             return (
                                 <div className="text-center py-12 space-y-6 animate-fade-in">
                                     <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mx-auto text-red-500">
@@ -318,7 +339,7 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
                         }
 
                         // 3. 错误状态 (非超时且非 IP 限制)
-                        if (error && step !== 7 && !ipLimitError) {
+                        if (error && currentStep !== 7 && !ipLimitError) {
                             return (
                                 <div className="text-center py-8">
                                     <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4 text-red-500">
@@ -372,6 +393,7 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
                                 );
 
                             case 0.5:
+                                if (currentStep === 8) return null; // Let the safety catch it
                                 return (
                                     <div className="text-center py-12 space-y-6 animate-fade-in">
                                         <div className="w-20 h-20 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-6 text-amber-600 animate-pulse">
@@ -409,10 +431,10 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
                             case 5:
                                 return paymentLink ? (
                                     <div className="flex flex-col items-center animate-fade-in text-center">
-                                        {(orderInfo || amount > 0) && (
+                                        {(amount > 0) && (
                                             <div className="mb-6 w-full bg-slate-50 rounded-xl p-4 border border-slate-100">
-                                                <div className="text-3xl font-bold text-slate-800 mb-1">¥ {orderInfo?.amount || amount}</div>
-                                                <div className="text-xs text-slate-400 font-mono">内部订单号: {orderInfo?.internalOrderId || internalOrderId}</div>
+                                                <div className="text-3xl font-bold text-slate-800 mb-1">¥ {amount}</div>
+                                                <div className="text-xs text-slate-400 font-mono">内部订单号: {internalOrderId}</div>
                                             </div>
                                         )}
                                         <div className="mb-8 flex flex-col items-center">
@@ -450,12 +472,12 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
 
                             case 7:
                                 return (
-                                    <div className="text-center py-12 space-y-6">
-                                        <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-6 text-slate-400">
+                                    <div className="text-center py-12">
+                                        <div className="w-20 h-20 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-6 text-amber-600">
                                             <Clock className="w-10 h-10" />
                                         </div>
-                                        <h2 className="text-2xl font-bold text-slate-800">订单已过期</h2>
-                                        <p className="text-slate-500 mt-2">支付时间已超长，订单已自动取消。</p>
+                                        <h2 className="text-2xl font-bold text-slate-800">支付已超时</h2>
+                                        <p className="text-slate-500 mt-2">订单已过期，请重新发起支付。</p>
                                         <button
                                             onClick={() => window.location.reload()}
                                             className="mt-8 bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3 rounded-xl font-bold transition-colors"
@@ -496,6 +518,6 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
                     </div>
                 </div>
             </div>
-        </div >
+        </div>
     );
 };

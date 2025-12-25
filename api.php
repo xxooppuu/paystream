@@ -9,7 +9,7 @@
  */
 
 // Version Configuration
-define('APP_VERSION', 'v2.2.63');
+define('APP_VERSION', 'v2.2.64');
 
 // Prevent any output before headers
 ob_start();
@@ -698,11 +698,21 @@ function matchAndLockItem($targetPrice, $internalOrderId, $filters = []) {
             if ($existing['status'] !== 'queueing' && $existing['status'] !== 'failed') {
                 // Already pending/success, return status data
                 if ($existing['status'] === 'pending' || $existing['status'] === 'success') {
-                $match = $db->fetchOne("
-                    SELECT i.*, s.cookie, s.remark, s.csrfToken, s.status as shopStatus 
-                    FROM inventory i JOIN shops s ON i.shopId = s.id 
-                    WHERE i.id = ?", [$existing['inventoryId']]);
-                if ($match) {
+                    // v2.2.64: Lock Integrity Check - If matched, verify lockTicket still matches inventory
+                    $match = $db->fetchOne("
+                        SELECT i.*, s.cookie, s.remark, s.csrfToken, s.status as shopStatus 
+                        FROM inventory i JOIN shops s ON i.shopId = s.id 
+                        WHERE i.id = ?", [$existing['inventoryId']]);
+                    
+                    if (!$match || $match['lockTicket'] !== $existing['lockTicket']) {
+                        // Integrity Breach: Item was manually released or re-locked by another process
+                        $db->query("UPDATE orders SET status = 'failed' WHERE id = ?", [$internalOrderId]);
+                        $db->query("INSERT INTO lock_logs (orderId, action, message, timestamp_ms) VALUES (?, ?, ?, ?)", [
+                            $internalOrderId, 'LOCK_STOLEN', "Order matches invalidated: inventory lockTicket mismatch (Admin release or race)", $nowMs
+                        ]);
+                        return ['error' => '订单匹配已失效（商品已被重新分配或手动下架），请重试', 'cancelled' => true];
+                    }
+
                     return [
                         'item' => $match,
                         'account' => [

@@ -444,7 +444,8 @@ export const usePaymentProcess = () => {
             } else {
                 addLog('⏳ 支付超时或未检测到结果');
                 setStep(7); // Expired/Timeout state
-                if (currentMatchedItem) releaseInventory(currentMatchedItem.id);
+                // v2.2.64: Remove automatic frontend-driven releaseInventory. 
+                // Rely on backend auto-cancel or explicit admin release.
             }
 
             return newOrder;
@@ -453,7 +454,8 @@ export const usePaymentProcess = () => {
             const msg = typeof e === 'string' ? e : e.message;
             setError(msg);
             addLog(`❌ 进程错误: ${msg}`);
-            if (currentMatchedItem) releaseInventory(currentMatchedItem.id);
+            // v2.2.64: Remove automatic frontend-driven releaseInventory on process error.
+            // This prevents "Double Matches" when transient errors occur and items are re-locked.
             setStep(0);
             return null;
         }
