@@ -24,3 +24,5 @@ export const getApiUrl = (endpoint: string): string => {
  * Helper to get the Proxy URL specifically, as it's used frequently.
  */
 export const PROXY_URL = getApiUrl('proxy');
+// v2.2.69: Centralized Version Management
+export const APP_VERSION = 'v2.2.69';
