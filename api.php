@@ -9,7 +9,7 @@
  */
 
 // Version Configuration
-define('APP_VERSION', 'v2.2.45');
+define('APP_VERSION', 'v2.2.46');
 
 // Prevent any output before headers
 ob_start();
@@ -347,7 +347,10 @@ function atomicAppendOrder($orderData) {
                 orderNo=COALESCE(VALUES(orderNo), orderNo), 
                 customer=VALUES(customer), 
                 amount=VALUES(amount), 
-                status=VALUES(status), 
+                status = CASE 
+                    WHEN status IN ('success', 'pending') THEN status 
+                    ELSE VALUES(status) 
+                END, 
                 inventoryId=VALUES(inventoryId), 
                 accountId=VALUES(accountId), 
                 buyerId=VALUES(buyerId), 
@@ -714,7 +717,12 @@ function matchAndLockItem($targetPrice, $internalOrderId, $filters = []) {
             // First Principles: createdAt only on INSERT, ignore on DUPLICATE
             $db->query("INSERT INTO orders (id, customer, amount, status, channel, method, createdAt, internalOrderId, lastHeartbeat) 
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        ON DUPLICATE KEY UPDATE status = 'queueing', lastHeartbeat = ?", [
+                        ON DUPLICATE KEY UPDATE 
+                        status = CASE 
+                            WHEN status IN ('success', 'pending') THEN status 
+                            ELSE VALUES(status) 
+                        END,
+                        lastHeartbeat = VALUES(lastHeartbeat)", [
                 $internalOrderId, 'Guest', $price, 'queueing', 'Zhuanzhuan', 'WeChat', $createdAt, $internalOrderId, $nowMs, $nowMs
             ]);
             
@@ -862,8 +870,8 @@ function proactiveCleanup() {
         $pdo->prepare("
             UPDATE orders 
             SET status = 'cancelled' 
-            WHERE UPPER(status) = 'PENDING' 
-            AND (UNIX_TIMESTAMP() - UNIX_TIMESTAMP(STR_TO_DATE(LEFT(createdAt, 19), '%Y-%m-%d %H:%i:%s'))) > 3600
+            WHERE status = 'pending' 
+            AND (UNIX_TIMESTAMP() - UNIX_TIMESTAMP(STR_TO_DATE(LEFT(createdAt, 19), '%%Y-%%m-%%d %%H:%%i:%%s'))) > 3600
         ")->execute();
 
         // QUEUEING > 30s Heartbeat Timeout (v2.2.44)
@@ -875,12 +883,12 @@ function proactiveCleanup() {
             AND (? - lastHeartbeat) > 30000
         ")->execute([$nowMs]);
 
-        // QUEUEING > 10m fallback (if heartbeat logic failed)
+        // QUEUEING > 10m fallback
         $pdo->prepare("
             UPDATE orders 
             SET status = 'cancelled' 
             WHERE status = 'queueing' 
-            AND (UNIX_TIMESTAMP() - UNIX_TIMESTAMP(STR_TO_DATE(LEFT(createdAt, 19), '%Y-%m-%d %H:%i:%s'))) > 600
+            AND (UNIX_TIMESTAMP() - UNIX_TIMESTAMP(STR_TO_DATE(LEFT(createdAt, 19), '%%Y-%%m-%%d %%H:%%i:%%s'))) > 600
         ")->execute();
 
         $pdo->commit();
