@@ -26,7 +26,7 @@ import { getApiUrl, PROXY_URL } from './config';
 import { SetupWizard } from './components/SetupWizard';
 const App: React.FC = () => {
   useEffect(() => {
-    document.title = 'PayStream Admin v2.2.47';
+    document.title = 'PayStream Admin v2.2.48';
   }, []);
 
   // Check for Public Payment Route
@@ -246,7 +246,20 @@ const App: React.FC = () => {
       await releaseInventoryForOrder(order);
       alert('订单已取消并释放库存');
     } else {
-      alert('API取消失败，请检查账号状态或手动在转转 App 取消');
+      if (confirm('API取消失败（账号可能掉线或订单已失效）。\n\n是否执行“强制本地取消”？这会强行标记订单为已取消并释放库存。')) {
+        // Update Order Status locally regardless of API
+        const updatedOrders = orders.map(o =>
+          o.id === order.id ? { ...o, status: OrderStatus.CANCELLED } : o
+        );
+        setOrders(updatedOrders);
+        await fetch(getApiUrl('orders'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updatedOrders)
+        });
+        await releaseInventoryForOrder(order);
+        alert('订单已强制执行本地取消');
+      }
     }
   };
 
@@ -631,7 +644,7 @@ const App: React.FC = () => {
           </div>
           {/* Version Footer */}
           <div className="fixed bottom-4 right-4 text-xs text-slate-400 bg-white px-3 py-1 rounded-full shadow-sm border border-slate-200">
-            Admin v2.2.47-MySQL
+            Admin v2.2.48-MySQL
           </div>
         </main>
       </div>

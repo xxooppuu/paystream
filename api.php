@@ -9,7 +9,7 @@
  */
 
 // Version Configuration
-define('APP_VERSION', 'v2.2.47');
+define('APP_VERSION', 'v2.2.48');
 
 // Prevent any output before headers
 ob_start();
@@ -348,7 +348,7 @@ function atomicAppendOrder($orderData) {
                 customer=VALUES(customer), 
                 amount=VALUES(amount), 
                 status = CASE 
-                    WHEN status IN ('success', 'pending', 'cancelled', 'failed') THEN status 
+                    WHEN VALUES(status) = 'queueing' AND status IN ('success', 'pending', 'cancelled', 'failed') THEN status 
                     ELSE VALUES(status) 
                 END, 
                 inventoryId=VALUES(inventoryId), 
@@ -719,7 +719,7 @@ function matchAndLockItem($targetPrice, $internalOrderId, $filters = []) {
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ON DUPLICATE KEY UPDATE 
                         status = CASE 
-                            WHEN status IN ('success', 'pending', 'cancelled', 'failed') THEN status 
+                            WHEN VALUES(status) = 'queueing' AND status IN ('success', 'pending', 'cancelled', 'failed') THEN status 
                             ELSE VALUES(status) 
                         END,
                         lastHeartbeat = VALUES(lastHeartbeat)", [
