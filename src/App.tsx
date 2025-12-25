@@ -25,7 +25,7 @@ import { ViewState, Order, OrderStatus } from './types';
 import { getApiUrl, PROXY_URL, APP_VERSION } from './config';
 import { SetupWizard } from './components/SetupWizard';
 const App: React.FC = () => {
-  document.title = 'PayStream Admin v2.2.71 (FIXED)';
+  document.title = 'PayStream Admin v2.2.72 (FIXED)';
 
   // Check for Public Payment Route
   const [publicPayId, setPublicPayId] = useState<string | null>(null);
