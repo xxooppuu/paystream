@@ -111,6 +111,11 @@ export const usePaymentProcess = () => {
                     }
                 } else {
                     const err = await matchRes.json().catch(() => ({}));
+                    if (err.cancelled) {
+                        setStep(8); // v2.2.41: 订单已关闭状态
+                        setError(err.error);
+                        throw new Error(err.error);
+                    }
                     if (err.queueing) {
                         setStep(0.5); // 进入显示排队进度的 UI
                         addLog(`${err.error}`);
@@ -479,6 +484,7 @@ export const usePaymentProcess = () => {
         orderCreatedAt: order?.createdAt,
         settings,
         internalOrderId,
-        queuePosition
+        queuePosition,
+        amount: order?.amount || 0
     };
 };

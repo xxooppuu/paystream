@@ -40,7 +40,7 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
     }, []);
 
     // Logic from the hook
-    const { startPayment, cancelCurrentOrder, loading, logs, step, error, paymentLink, orderCreatedAt, queueEndTime, settings, internalOrderId, queuePosition } = usePaymentProcess();
+    const { startPayment, cancelCurrentOrder, loading, logs, step, error, paymentLink, orderCreatedAt, queueEndTime, settings, internalOrderId, queuePosition, amount } = usePaymentProcess();
 
     useEffect(() => {
         // Fetch specific config
@@ -378,9 +378,9 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
                                             <Hourglass className="w-10 h-10" />
                                         </div>
                                         <div className="space-y-4">
-                                            <h3 className="text-xl font-bold text-slate-800">当前订单过多，排队中...</h3>
+                                            <h3 className="text-xl font-bold text-slate-800">当前订单过多，全场排队中...</h3>
                                             <div className="bg-amber-50 text-amber-800 px-4 py-3 rounded-xl border border-amber-100 max-w-xs mx-auto">
-                                                <p className="text-sm">系统正在努力匹配空闲商品</p>
+                                                <p className="text-sm">系统正在为您匹配全局空闲商品</p>
                                                 {internalOrderId && <p className="text-[10px] font-mono mt-1 opacity-60">单号: {internalOrderId}</p>}
                                                 <p className="text-xs mt-2 text-amber-600 font-bold">目前排位: 第 {queuePosition || '?'} 位</p>
                                             </div>
@@ -409,10 +409,10 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
                             case 5:
                                 return paymentLink ? (
                                     <div className="flex flex-col items-center animate-fade-in text-center">
-                                        {orderInfo && (
+                                        {(orderInfo || amount > 0) && (
                                             <div className="mb-6 w-full bg-slate-50 rounded-xl p-4 border border-slate-100">
-                                                <div className="text-3xl font-bold text-slate-800 mb-1">¥ {orderInfo.amount}</div>
-                                                <div className="text-xs text-slate-400 font-mono">订单号: {orderInfo.internalOrderId}</div>
+                                                <div className="text-3xl font-bold text-slate-800 mb-1">¥ {orderInfo?.amount || amount}</div>
+                                                <div className="text-xs text-slate-400 font-mono">内部订单号: {orderInfo?.internalOrderId || internalOrderId}</div>
                                             </div>
                                         )}
                                         <div className="mb-8 flex flex-col items-center">
@@ -461,6 +461,23 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
                                             className="mt-8 bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3 rounded-xl font-bold transition-colors"
                                         >
                                             刷新页面重新下单
+                                        </button>
+                                    </div>
+                                );
+
+                            case 8:
+                                return (
+                                    <div className="text-center py-12 space-y-6">
+                                        <div className="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-6 text-red-500">
+                                            <XCircle className="w-10 h-10" />
+                                        </div>
+                                        <h2 className="text-2xl font-bold text-slate-800">订单已关闭</h2>
+                                        <p className="text-slate-500 mt-2">{error || '由于超时或手动操作，该排队订单已失效。'}</p>
+                                        <button
+                                            onClick={() => window.location.reload()}
+                                            className="mt-8 bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3 rounded-xl font-bold transition-colors"
+                                        >
+                                            返回重新下单
                                         </button>
                                     </div>
                                 );

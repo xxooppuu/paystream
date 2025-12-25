@@ -9,7 +9,7 @@
  */
 
 // Version Configuration
-define('APP_VERSION', 'v2.2.40');
+define('APP_VERSION', 'v2.2.41');
 
 // Prevent any output before headers
 ob_start();
@@ -640,9 +640,13 @@ function matchAndLockItem($targetPrice, $internalOrderId, $filters = []) {
 
         // v2.2.39: Status Guard - If order is already matched/complete, don't re-queue it
         $existing = $db->fetchOne("SELECT status, orderNo, inventoryId, accountId, lockTicket FROM orders WHERE id = ?", [$internalOrderId]);
-        if ($existing && $existing['status'] !== 'queueing' && $existing['status'] !== 'failed') {
-            // Already pending/success, return status data
-            if ($existing['status'] === 'pending' || $existing['status'] === 'success') {
+        if ($existing) {
+            if ($existing['status'] === 'cancelled') {
+                return ['error' => '订单已取消 (管理员手动关闭或心跳超时)', 'cancelled' => true];
+            }
+            if ($existing['status'] !== 'queueing' && $existing['status'] !== 'failed') {
+                // Already pending/success, return status data
+                if ($existing['status'] === 'pending' || $existing['status'] === 'success') {
                 $match = $db->fetchOne("
                     SELECT i.*, s.cookie, s.remark, s.csrfToken, s.status as shopStatus 
                     FROM inventory i JOIN shops s ON i.shopId = s.id 
@@ -689,14 +693,14 @@ function matchAndLockItem($targetPrice, $internalOrderId, $filters = []) {
         $availableItems = $db->fetchAll($sql, $params);
         $N = count($availableItems);
 
-        // 2. Check Queue Position (v2.2.32 First Principles: Filter by active heartbeat > 30s)
+        // v2.2.41 Global FIFO First Principles: Remove amount filter for absolute fairness
+        // and enforce strict 30s active cutoff.
         $activeCutoff = $nowMs - 30000;
-        $queueSql = "SELECT id FROM orders 
-                     WHERE abs(amount - ?) < 0.01 
-                     AND status = 'queueing' 
+        $queueSql = \"SELECT id FROM orders 
+                     WHERE status = 'queueing' 
                      AND (lastHeartbeat > ? OR id = ?)
-                     ORDER BY createdAt ASC, id ASC";
-        $queue = $db->fetchAll($queueSql, [$price, $activeCutoff, $internalOrderId]);
+                     ORDER BY createdAt ASC, id ASC\";
+        $queue = $db->fetchAll($queueSql, [$activeCutoff, $internalOrderId]);
         $queueIds = array_column($queue, 'id');
         $pos = array_search($internalOrderId, $queueIds);
 
