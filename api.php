@@ -9,7 +9,7 @@
  */
 
 // Version Configuration
-define('APP_VERSION', 'v2.2.64');
+define('APP_VERSION', 'v2.2.65');
 
 // Prevent any output before headers
 ob_start();
@@ -360,6 +360,8 @@ function atomicAppendOrder($orderData) {
                 customer=VALUES(customer), 
                 amount=VALUES(amount), 
                 status = CASE 
+                    WHEN status = 'cancelled' THEN 'cancelled' -- Once cancelled, STAY cancelled (Backend Authority)
+                    WHEN status = 'failed' AND VALUES(status) = 'pending' THEN 'failed' -- Failed cannot be revived by pending
                     WHEN VALUES(status) = 'queueing' AND status IN ('success', 'pending', 'cancelled', 'failed') THEN status 
                     ELSE VALUES(status) 
                 END, 
