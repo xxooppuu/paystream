@@ -9,7 +9,7 @@
  */
 
 // Version Configuration
-define('APP_VERSION', 'v2.2.42');
+define('APP_VERSION', 'v2.2.43');
 
 // Prevent any output before headers
 ob_start();
@@ -664,6 +664,7 @@ function matchAndLockItem($targetPrice, $internalOrderId, $filters = []) {
                         'lockTicket' => $existing['lockTicket'],
                         'internalOrderId' => $internalOrderId
                     ];
+                    }
                 }
             }
         }
