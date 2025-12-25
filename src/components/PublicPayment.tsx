@@ -40,7 +40,7 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
     }, []);
 
     // Logic from the hook
-    const { startPayment, cancelCurrentOrder, loading, logs, step, error, paymentLink, orderCreatedAt, queueEndTime, settings, internalOrderId, queuePosition, amount } = usePaymentProcess();
+    const { startPayment, cancelCurrentOrder, loading, logs, step, error, paymentLink, orderCreatedAt, queueEndTime, settings, internalOrderId, queuePosition, amount, matchedTime } = usePaymentProcess();
 
     useEffect(() => {
         // Fetch specific config
@@ -63,7 +63,9 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
             const duration = Number(settings.validityDuration);
             const timer = setInterval(() => {
                 const now = Date.now();
-                const elapsedSeconds = Math.floor((now - new Date(orderCreatedAt).getTime()) / 1000);
+                // v2.2.70: Use matchedTime (start of lock) instead of createdAt (start of queue)
+                const startTime = matchedTime || new Date(orderCreatedAt || now).getTime();
+                const elapsedSeconds = Math.floor((now - startTime) / 1000);
                 const remaining = duration - elapsedSeconds;
 
                 if (remaining <= 0) {
@@ -76,7 +78,7 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
             }, 1000);
             return () => clearInterval(timer);
         }
-    }, [step, finalStep, orderCreatedAt, settings?.validityDuration]);
+    }, [step, finalStep, orderCreatedAt, settings?.validityDuration, matchedTime]);
 
     useEffect(() => {
         if (queueEndTime) {

@@ -20,6 +20,7 @@ export const usePaymentProcess = () => {
     const [lockTicket, setLockTicket] = useState<string | null>(null);
     const [internalOrderId, setInternalOrderId] = useState<string | null>(null);
     const [queuePosition, setQueuePosition] = useState<number | null>(null);
+    const [matchedTime, setMatchedTime] = useState<number | null>(null);
 
     const generateInternalOrderId = () => {
         const now = new Date();
@@ -104,6 +105,8 @@ export const usePaymentProcess = () => {
                     if (result.success) {
                         addLog(`✅ 匹配成功! [商品ID: ${result.data.item.id}]`);
                         setLockTicket(result.data.lockTicket);
+                        // v2.2.70: Fix Premature Timeout - Start timer ONLY after match
+                        setMatchedTime(Date.now());
                         return {
                             item: result.data.item,
                             freshAccounts: [result.data.account],
@@ -148,7 +151,9 @@ export const usePaymentProcess = () => {
             setLogs([]);
             setMatchedItem(null);
             setOrder(null);
+            setOrder(null);
             setPaymentLink('');
+            setMatchedTime(null);
 
             // 1. Find Inventory
             const { item, freshAccounts: accountsAfterMatch, orderId: actualOrderId } = await findAndLockInventory(amount);
@@ -487,6 +492,7 @@ export const usePaymentProcess = () => {
         step,
         paymentLink,
         error,
+        matchedTime,
         order,
         matchedItem,
         queueEndTime,
