@@ -9,7 +9,7 @@
  */
 
 // Version Configuration
-define('APP_VERSION', 'v2.2.52');
+define('APP_VERSION', 'v2.2.53');
 
 // Prevent any output before headers
 ob_start();
@@ -1054,6 +1054,17 @@ function performSetup($adminPassword, $dbConfig) {
                 lastUpdated VARCHAR(50)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+            CREATE TABLE IF NOT EXISTS payment_pages (
+                id VARCHAR(100) PRIMARY KEY,
+                title VARCHAR(255),
+                channelId VARCHAR(100),
+                minAmount DECIMAL(10,2),
+                maxAmount DECIMAL(10,2),
+                notice TEXT,
+                isOpen TINYINT(1) DEFAULT 1,
+                ipLimitTime DECIMAL(10,2),
+                ipLimitCount INT,
+                ipWhitelist TEXT,
                 createdAt BIGINT
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -1187,6 +1198,26 @@ function performSetup($adminPassword, $dbConfig) {
    --------------------------- */
 
 try {
+    // v2.2.53 Auto-Migration: Ensure 'lock_logs' table exists
+    if ($isInstalled && $act !== 'setup' && $act !== 'test_db_connection') {
+        try {
+            $db = DB::getInstance();
+            $db->query("CREATE TABLE IF NOT EXISTS lock_logs (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                orderId VARCHAR(100),
+                action VARCHAR(100),
+                pos INT,
+                inventoryId VARCHAR(100),
+                message TEXT,
+                timestamp_ms BIGINT,
+                INDEX idx_order (orderId),
+                INDEX idx_ts (timestamp_ms)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+        } catch (Exception $e) {
+            // Table exists or DB down, handled by individual actions
+        }
+    }
+
     switch ($act) {
         case 'check_setup':
             jsonResponse([
