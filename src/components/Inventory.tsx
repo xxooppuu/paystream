@@ -62,7 +62,8 @@ export const Inventory: React.FC = () => {
     }, []);
 
     useEffect(() => {
-        fetchShopsData();
+        // v2.2.50: Removed auto-refresh on mount for performance.
+        // Use the manual refresh button or trigger events.
 
         // v2.2.22: Listen for global refresh events from utilities
         const handleForceRefresh = () => {

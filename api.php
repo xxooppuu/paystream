@@ -9,7 +9,7 @@
  */
 
 // Version Configuration
-define('APP_VERSION', 'v2.2.49');
+define('APP_VERSION', 'v2.2.50');
 
 // Prevent any output before headers
 ob_start();
@@ -351,9 +351,9 @@ function atomicAppendOrder($orderData) {
                     WHEN VALUES(status) = 'queueing' AND status IN ('success', 'pending', 'cancelled', 'failed') THEN status 
                     ELSE VALUES(status) 
                 END, 
-                inventoryId=VALUES(inventoryId), 
-                accountId=VALUES(accountId), 
-                buyerId=VALUES(buyerId), 
+                inventoryId=COALESCE(VALUES(inventoryId), inventoryId), 
+                accountId=COALESCE(VALUES(accountId), accountId), 
+                buyerId=COALESCE(VALUES(buyerId), buyerId), 
                 internalOrderId=VALUES(internalOrderId)";
         
         $db->query($sql, [
@@ -369,8 +369,18 @@ function atomicAppendOrder($orderData) {
             isset($orderData['inventoryId']) ? $orderData['inventoryId'] : null,
             isset($orderData['accountId']) ? $orderData['accountId'] : null,
             isset($orderData['buyerId']) ? $orderData['buyerId'] : null,
-            isset($orderData['internalOrderId']) ? $orderData['internalOrderId'] : null
+            isset($orderData['internalOrderId']) ? $orderData['internalOrderId'] : $orderData['id']
         ]);
+
+        // v2.2.50: Price Auto-Sync to Inventory
+        if ($orderData['status'] === 'pending' && !empty($orderData['inventoryId']) && !empty($orderData['amount'])) {
+            $priceNum = (float)$orderData['amount'];
+            $priceStr = number_format($priceNum, 2, '.', '');
+            $db->query("UPDATE inventory SET priceNum = ?, price = ? WHERE id = ?", [
+                $priceNum, $priceStr, $orderData['inventoryId']
+            ]);
+        }
+        
         return true;
     } catch (Exception $e) {
         return $e->getMessage();
@@ -690,9 +700,9 @@ function matchAndLockItem($targetPrice, $internalOrderId, $filters = []) {
                 FROM inventory i
                 JOIN shops s ON i.shopId = s.id
                 WHERE (i.status LIKE '%在售%' OR i.status LIKE '%待卖%' OR i.status LIKE '%出售%' OR i.status LIKE '%代卖%')
-                AND (i.internalStatus = 'idle' OR (i.internalStatus = 'occupied' AND (? - i.lastMatchedTime) > ?))";
+                AND i.internalStatus = 'idle'";
 
-        $params = [$nowMs, $validityMs];
+        $params = [];
         
         if ($specificShopId) {
             $sql .= " AND i.shopId = ?";
@@ -756,18 +766,35 @@ function matchAndLockItem($targetPrice, $internalOrderId, $filters = []) {
         $lockTicket = uniqid('LT_', true);
         $match = null; // Initialize $match to ensure it's defined if loop doesn't run or match fails
 
-        // v2.2.49: Deterministic Rank-Based Locking (Ticket-to-Seat logic)
-        // Each user at rank $pos ONLY attempts to lock the inventory item at the same index
+        // v2.2.50: Transactional Identity & Rollback Safety
+        // Only proceed if rank $pos is within available range
         if ($pos < $N) {
             $currentItem = $availableItems[$pos];
             
-            // Atomic update: only lock if still idle
+            // 1. Lock Inventory Row
             $stmt = $pdo->prepare("UPDATE inventory SET internalStatus = 'occupied', lastMatchedTime = ?, lockTicket = ? WHERE id = ? AND internalStatus = 'idle'");
             $stmt->execute([$nowMs, $lockTicket, $currentItem['id']]);
             
             if ($stmt->rowCount() > 0) {
-                $matched = true;
-                $match = $currentItem;
+                // 2. Update Order Status - CRITICAL: Must be still queueing!
+                $orderStmt = $pdo->prepare("UPDATE orders SET status = 'pending', inventoryId = ?, accountId = ?, lockTicket = ? WHERE id = ? AND status = 'queueing'");
+                $orderStmt->execute([$currentItem['id'], $currentItem['shopId'], $lockTicket, $internalOrderId]);
+                
+                if ($orderStmt->rowCount() > 0) {
+                    $matched = true;
+                    $match = $currentItem;
+                } else {
+                    // TRANSACTIONAL ROLLBACK: Order was cancelled or changed while we were locking inventory
+                    // We must release the inventory lock immediately
+                    $pdo->prepare("UPDATE inventory SET internalStatus = 'idle', lastMatchedTime = NULL, lockTicket = NULL WHERE id = ? AND lockTicket = ?")
+                        ->execute([$currentItem['id'], $lockTicket]);
+                    
+                    $pdo->commit();
+                    return [
+                        'status' => 'cancelled',
+                        'message' => '订单在匹配过程中已失效，锁定已释放'
+                    ];
+                }
             }
         }
 
@@ -781,12 +808,7 @@ function matchAndLockItem($targetPrice, $internalOrderId, $filters = []) {
             ];
         }
 
-        // Successfully locked $match
-        // Update Order
-        $db->query("UPDATE orders SET status = 'pending', inventoryId = ?, accountId = ?, lockTicket = ? WHERE id = ?", [
-            $match['id'], $match['shopId'], $lockTicket, $internalOrderId
-        ]);
-        
+        // Successfully locked $match and updated order in step above
         $pdo->commit();
         
         return [
