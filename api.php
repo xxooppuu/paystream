@@ -112,12 +112,8 @@ class DB {
     public function lastInsertId() {
         return $this->pdo->lastInsertId();
     }
-
-    public function rowCount() {
-        return $this->pdo->lastInsertId() ? 1 : 0; // Fallback or use global
-    }
     
-    // v2.2.57: Added direct statement capture for rowCount support
+    // v2.2.57: Statement-level rowCount support
     private $lastStmt = null;
     public function execute($sql, $params = []) {
         $this->lastStmt = $this->pdo->prepare($sql);
@@ -1451,11 +1447,10 @@ try {
             }
             
             // 2. Mark order as cancelled
-            $cancelStmt = $pdo->prepare("UPDATE orders SET status = 'cancelled' WHERE id = ? AND status IN ('queueing', 'pending')");
-            $cancelStmt->execute([$orderId]);
+            $cancelStmt = $db->execute("UPDATE orders SET status = 'cancelled' WHERE id = ? AND status IN ('queueing', 'pending')", [$orderId]);
             
-            if ($cancelStmt->rowCount() > 0) {
-                $db->query("INSERT INTO lock_logs (orderId, action, message, timestamp_ms) VALUES (?, ?, ?, ?)", [
+            if ($db->getAffectedRows() > 0) {
+                $db->execute("INSERT INTO lock_logs (orderId, action, message, timestamp_ms) VALUES (?, ?, ?, ?)", [
                     $orderId, 'ORDER_CANCEL', "Order manually cancelled via server-side API", round(microtime(true) * 1000)
                 ]);
             }
