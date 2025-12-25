@@ -9,7 +9,7 @@
  */
 
 // Version Configuration
-define('APP_VERSION', 'v2.2.57');
+define('APP_VERSION', 'v2.2.58');
 
 // Prevent any output before headers
 ob_start();
@@ -113,7 +113,7 @@ class DB {
         return $this->pdo->lastInsertId();
     }
     
-    // v2.2.57: Statement-level rowCount support
+    // v2.2.58: Robust affected rows support
     private $lastStmt = null;
     public function execute($sql, $params = []) {
         $this->lastStmt = $this->pdo->prepare($sql);
@@ -123,6 +123,11 @@ class DB {
     
     public function getAffectedRows() {
         return $this->lastStmt ? $this->lastStmt->rowCount() : 0;
+    }
+
+    // Proxy for original query method to maintain compatibility
+    public function query($sql, $params = []) {
+        return $this->execute($sql, $params);
     }
 }
 
@@ -1419,12 +1424,10 @@ try {
             }
             break;
         case 'release_inventory':
-            $input = json_decode(file_get_contents('php://input'), true);
-            if (!$input || !isset($input['id'])) {
-                jsonResponse(['success' => false, 'error' => 'Missing ID'], 400);
-            }
-            $res = atomicUnlockItem($input['id']);
-            jsonResponse(['success' => $res === true, 'error' => $res !== true ? $res : null]);
+            // v2.2.58 DECOMMISSIONED: Direct release via API is now FORBIDDEN to prevent "Release Storms".
+            // All inventory releases must flow through Case: cancel_order.
+            error_log("Security Alert: Legacy release_inventory called. Ignored.");
+            jsonResponse(['success' => false, 'error' => 'API Deprecated. Use cancel_order instead.'], 403);
             break;
             
         case 'cancel_order':
@@ -1451,16 +1454,16 @@ try {
             
             if ($db->getAffectedRows() > 0) {
                 $db->execute("INSERT INTO lock_logs (orderId, action, message, timestamp_ms) VALUES (?, ?, ?, ?)", [
-                    $orderId, 'ORDER_CANCEL', "Order manually cancelled via server-side API", round(microtime(true) * 1000)
+                    $orderId, 'ORDER_CANCEL', "Order status set to CANCELLED via server-side API", round(microtime(true) * 1000)
                 ]);
-            }
-            
-            // 3. Release inventory if associated
-            if (!empty($order['inventoryId'])) {
-                $db->query("UPDATE inventory SET internalStatus = 'idle', lastMatchedTime = NULL, lockTicket = NULL WHERE id = ?", [$order['inventoryId']]);
-                $db->query("INSERT INTO lock_logs (orderId, action, inventoryId, message, timestamp_ms) VALUES (?, ?, ?, ?, ?)", [
-                    $orderId, 'INVENTORY_RELEASE', $order['inventoryId'], "Inventory auto-released during order cancellation", round(microtime(true) * 1000)
-                ]);
+                
+                // 3. Release inventory if associated (Atomic Chain)
+                if (!empty($order['inventoryId'])) {
+                    $db->execute("UPDATE inventory SET internalStatus = 'idle', lastMatchedTime = NULL, lockTicket = NULL WHERE id = ?", [$order['inventoryId']]);
+                    $db->execute("INSERT INTO lock_logs (orderId, action, inventoryId, message, timestamp_ms) VALUES (?, ?, ?, ?, ?)", [
+                        $orderId, 'INVENTORY_RELEASE', $order['inventoryId'], "Inventory released specifically for canceled order " . $orderId, round(microtime(true) * 1000)
+                    ]);
+                }
             }
             
             $pdo->commit();
