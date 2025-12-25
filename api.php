@@ -9,7 +9,7 @@
  */
 
 // Version Configuration
-define('APP_VERSION', 'v2.2.53');
+define('APP_VERSION', 'v2.2.54');
 
 // Prevent any output before headers
 ob_start();
@@ -816,8 +816,10 @@ function matchAndLockItem($targetPrice, $internalOrderId, $filters = []) {
                 ]);
             }
         } else {
+            // v2.2.54: Added reason for queue failure to logs
+            $msg = ($N == 0) ? "No idle inventory available" : "Queue position exceeds available items count ($N)";
             $db->query("INSERT INTO lock_logs (orderId, action, pos, message, timestamp_ms) VALUES (?, ?, ?, ?, ?)", [
-                $internalOrderId, 'OUT_OF_RANGE', $pos, "Queue position exceeds available items count ($N)", $nowMs
+                $internalOrderId, 'QUEUE_WAIT', $pos, $msg, $nowMs
             ]);
         }
 
@@ -848,6 +850,7 @@ function matchAndLockItem($targetPrice, $internalOrderId, $filters = []) {
         ];
     } catch (Exception $e) {
         if (isset($pdo) && $pdo->inTransaction()) $pdo->rollBack();
+        error_log("matchAndLockItem failed: " . $e->getMessage());
         return "数据库操作失败: " . $e->getMessage();
     }
 }
@@ -868,16 +871,25 @@ function atomicLockItem($inventoryId, $matchedTime) {
     }
 }
 
-function atomicUnlockItem($inventoryId, $accountId = null) {
+function atomicUnlockItem($id) {
     try {
         $db = DB::getInstance();
-        if ($accountId) {
-            $db->query("UPDATE inventory SET internalStatus = 'idle', lastMatchedTime = NULL, lockTicket = NULL WHERE id = ? AND shopId = ?", [$inventoryId, $accountId]);
-        } else {
-            $db->query("UPDATE inventory SET internalStatus = 'idle', lastMatchedTime = NULL, lockTicket = NULL WHERE id = ?", [$inventoryId]);
-        }
+        $pdo = $db->getConnection();
+        $pdo->beginTransaction();
+
+        $stmt = $pdo->prepare("UPDATE inventory SET internalStatus = 'idle', lastMatchedTime = NULL, lockTicket = NULL WHERE id = ?");
+        $stmt->execute([$id]);
+        
+        // v2.2.54: Log Release
+        $db->query("INSERT INTO lock_logs (action, inventoryId, message, timestamp_ms) VALUES (?, ?, ?, ?)", [
+            'INVENTORY_RELEASE', $id, "Physical inventory release triggered", round(microtime(true) * 1000)
+        ]);
+
+        $pdo->commit();
         return true;
     } catch (Exception $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        error_log("atomicUnlockItem failed: " . $e->getMessage());
         return $e->getMessage();
     }
 }
@@ -1358,16 +1370,49 @@ try {
             }
             break;
         case 'release_inventory':
-            if ($_SERVER['REQUEST_METHOD'] !== 'POST') jsonResponse(['error' => 'POST required'], 405);
             $input = json_decode(file_get_contents('php://input'), true);
-            if (!$input || !isset($input['id'])) jsonResponse(['error' => 'Missing inventory ID'], 400);
-            
-            $res = atomicUnlockItem($input['id'], isset($input['accountId']) ? $input['accountId'] : null);
-            if ($res === true) {
-                jsonResponse(['success' => true]);
-            } else {
-                jsonResponse(['error' => $res], 500);
+            if (!$input || !isset($input['id'])) {
+                jsonResponse(['success' => false, 'error' => 'Missing ID'], 400);
             }
+            $res = atomicUnlockItem($input['id']);
+            jsonResponse(['success' => $res === true, 'error' => $res !== true ? $res : null]);
+            break;
+            
+        case 'cancel_order':
+            // v2.2.54: Atomic server-side cancellation and inventory release
+            $input = json_decode(file_get_contents('php://input'), true);
+            $orderId = isset($input['orderId']) ? $input['orderId'] : null;
+            if (!$orderId) {
+                jsonResponse(['success' => false, 'error' => 'Missing orderId'], 400);
+            }
+            
+            $db = DB::getInstance();
+            $pdo = $db->getConnection();
+            $pdo->beginTransaction();
+            
+            // 1. Find the order and its associated inventory
+            $order = $db->fetchOne("SELECT * FROM orders WHERE id = ?", [$orderId]);
+            if (!$order) {
+                $pdo->rollBack();
+                jsonResponse(['success' => false, 'error' => 'Order not found'], 404);
+            }
+            
+            // 2. Mark order as cancelled
+            $db->query("UPDATE orders SET status = 'cancelled' WHERE id = ? AND status IN ('queueing', 'pending')", [$orderId]);
+            $db->query("INSERT INTO lock_logs (orderId, action, message, timestamp_ms) VALUES (?, ?, ?, ?)", [
+                $orderId, 'ORDER_CANCEL', "Order manually cancelled via server-side API", round(microtime(true) * 1000)
+            ]);
+            
+            // 3. Release inventory if associated
+            if (!empty($order['inventoryId'])) {
+                $db->query("UPDATE inventory SET internalStatus = 'idle', lastMatchedTime = NULL, lockTicket = NULL WHERE id = ?", [$order['inventoryId']]);
+                $db->query("INSERT INTO lock_logs (orderId, action, inventoryId, message, timestamp_ms) VALUES (?, ?, ?, ?, ?)", [
+                    $orderId, 'INVENTORY_RELEASE', $order['inventoryId'], "Inventory auto-released during order cancellation", round(microtime(true) * 1000)
+                ]);
+            }
+            
+            $pdo->commit();
+            jsonResponse(['success' => true]);
             break;
         case 'match_and_lock':
             if ($_SERVER['REQUEST_METHOD'] !== 'POST') jsonResponse(['error' => 'POST required'], 405);

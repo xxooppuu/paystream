@@ -26,7 +26,7 @@ import { getApiUrl, PROXY_URL } from './config';
 import { SetupWizard } from './components/SetupWizard';
 const App: React.FC = () => {
   useEffect(() => {
-    document.title = 'PayStream Admin v2.2.53';
+    document.title = 'PayStream Admin v2.2.54';
   }, []);
 
   // Check for Public Payment Route
@@ -221,44 +221,42 @@ const App: React.FC = () => {
     }
 
     if (success) {
-      // Update Order Status locally
-      const updatedOrders = orders.map(o =>
-        o.id === order.id ? { ...o, status: OrderStatus.CANCELLED } : o
-      );
-      setOrders(updatedOrders);
-
-      // Persist Order
-      await fetch(getApiUrl('orders'), {
+      // v2.2.54: Simply call server-side atomic cancellation
+      // The server will handle status update AND inventory release in one transaction
+      const cancelRes = await fetch(getApiUrl('cancel_order'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updatedOrders) // Saving reversed list is risky if backend expects order? No, upsert is usually whole list in this app.
-        // Logic in fetchOrders reverses it for View. Logic in save saves 'newOrders'.
-        // We should probably save the RAW list. But 'orders' state is currently reversed view?
-        // The fetchOrders: setOrders(savedOrders.reverse())
-        // So 'orders' is reversed.
-        // To save, we should un-reverse or just save as is because backend overwrites?
-        // Actually TestPayment saves: [newOrder, ...otherOrders]. 
-        // App saves: updatedOrders.
-        // Let's rely on state.
+        body: JSON.stringify({ orderId: order.id })
       });
 
-      // Release Inventory
-      await releaseInventoryForOrder(order);
-      alert('订单已取消并释放库存');
-    } else {
-      if (confirm('API取消失败（账号可能掉线或订单已失效）。\n\n是否执行“强制本地取消”？这会强行标记订单为已取消并释放库存。')) {
-        // Update Order Status locally regardless of API
+      if (cancelRes.ok) {
+        // Update local state for immediate feedback
         const updatedOrders = orders.map(o =>
           o.id === order.id ? { ...o, status: OrderStatus.CANCELLED } : o
         );
         setOrders(updatedOrders);
-        await fetch(getApiUrl('orders'), {
+        alert('订单已取消并释放库存');
+      } else {
+        const err = await cancelRes.json();
+        alert('本地取消失败: ' + (err.error || '未知错误'));
+      }
+    } else {
+      if (confirm('API取消失败（账号可能掉线或订单已失效）。\n\n是否执行“强制本地取消”？这会强行标记订单为已取消并释放库存。')) {
+        const cancelRes = await fetch(getApiUrl('cancel_order'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(updatedOrders)
+          body: JSON.stringify({ orderId: order.id })
         });
-        await releaseInventoryForOrder(order);
-        alert('订单已强制执行本地取消');
+
+        if (cancelRes.ok) {
+          const updatedOrders = orders.map(o =>
+            o.id === order.id ? { ...o, status: OrderStatus.CANCELLED } : o
+          );
+          setOrders(updatedOrders);
+          alert('订单已强制执行本地取消');
+        } else {
+          alert('强制取消失败，请重试');
+        }
       }
     }
   };
@@ -644,7 +642,7 @@ const App: React.FC = () => {
           </div>
           {/* Version Footer */}
           <div className="fixed bottom-4 right-4 text-xs text-slate-400 bg-white px-3 py-1 rounded-full shadow-sm border border-slate-200">
-            Admin v2.2.53-MySQL
+            Admin v2.2.54-MySQL
           </div>
         </main>
       </div>
