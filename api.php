@@ -9,7 +9,7 @@
  */
 
 // Version Configuration
-define('APP_VERSION', 'v2.2.41');
+define('APP_VERSION', 'v2.2.42');
 
 // Prevent any output before headers
 ob_start();
@@ -696,11 +696,11 @@ function matchAndLockItem($targetPrice, $internalOrderId, $filters = []) {
         // v2.2.41 Global FIFO First Principles: Remove amount filter for absolute fairness
         // and enforce strict 30s active cutoff.
         $activeCutoff = $nowMs - 30000;
-        $queueSql = \"SELECT id FROM orders 
-                     WHERE status = 'queueing' 
-                     AND (lastHeartbeat > ? OR id = ?)
-                     ORDER BY createdAt ASC, id ASC\";
-        $queue = $db->fetchAll($queueSql, [$activeCutoff, $internalOrderId]);
+         $queueSql = "SELECT id FROM orders 
+                      WHERE status = 'queueing' 
+                      AND (lastHeartbeat > ? OR id = ?)
+                      ORDER BY createdAt ASC, id ASC";
+         $queue = $db->fetchAll($queueSql, [$activeCutoff, $internalOrderId]);
         $queueIds = array_column($queue, 'id');
         $pos = array_search($internalOrderId, $queueIds);
 
@@ -713,7 +713,7 @@ function matchAndLockItem($targetPrice, $internalOrderId, $filters = []) {
             ]);
             
             // Re-fetch queue
-            $queue = $db->fetchAll($queueSql, [$price, $activeCutoff, $internalOrderId]);
+            $queue = $db->fetchAll($queueSql, [$activeCutoff, $internalOrderId]);
             $queueIds = array_column($queue, 'id');
             $pos = array_search($internalOrderId, $queueIds);
             
