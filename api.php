@@ -9,7 +9,7 @@
  */
 
 // Version Configuration
-define('APP_VERSION', 'v2.2.54');
+define('APP_VERSION', 'v2.2.55');
 
 // Prevent any output before headers
 ob_start();
@@ -700,9 +700,10 @@ function matchAndLockItem($targetPrice, $internalOrderId, $filters = []) {
                 FROM inventory i
                 JOIN shops s ON i.shopId = s.id
                 WHERE (i.status LIKE '%在售%' OR i.status LIKE '%待卖%' OR i.status LIKE '%出售%' OR i.status LIKE '%代卖%')
-                AND i.internalStatus = 'idle'";
+                AND i.internalStatus = 'idle'
+                AND ABS(i.price - ?) < 0.01";
 
-        $params = [];
+        $params = [$price];
         
         if ($specificShopId) {
             $sql .= " AND i.shopId = ?";
@@ -718,9 +719,10 @@ function matchAndLockItem($targetPrice, $internalOrderId, $filters = []) {
          $queueSql = "SELECT id FROM orders 
                       WHERE status = 'queueing' 
                       AND (lastHeartbeat > ? OR id = ?)
+                      AND amount = ?
                       ORDER BY createdAt ASC, id ASC
                       FOR UPDATE";
-         $queue = $db->fetchAll($queueSql, [$activeCutoff, $internalOrderId]);
+         $queue = $db->fetchAll($queueSql, [$activeCutoff, $internalOrderId, $price]);
         $queueIds = array_column($queue, 'id');
         $pos = array_search($internalOrderId, $queueIds);
 
