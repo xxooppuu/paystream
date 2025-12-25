@@ -40,7 +40,16 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
     }, []);
 
     // Logic from the hook
-    const { startPayment, cancelCurrentOrder, loading, logs, step, error, paymentLink, orderCreatedAt, queueEndTime, settings, internalOrderId, queuePosition, amount, matchedTime } = usePaymentProcess();
+    const { startPayment, cancelCurrentOrder, loading, logs, step, error, paymentLink, orderCreatedAt, queueEndTime, settings, internalOrderId, queuePosition, amount, matchedTime, order } = usePaymentProcess();
+
+    // v2.2.80: Track logged orders to prevent duplicates (and ensure logging happens immediately upon order creation)
+    const orderLoggedRef = React.useRef<string | null>(null);
+    useEffect(() => {
+        if (order && order.orderNo && orderLoggedRef.current !== order.orderNo) {
+            orderLoggedRef.current = order.orderNo;
+            saveIpLog().then(() => checkIpLimit(true));
+        }
+    }, [order]);
 
     useEffect(() => {
         // Fetch specific config
@@ -193,10 +202,9 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
 
         try {
             const info = await startPayment(adjustedAmount);
+            // v2.2.80: IP Logging moved to useEffect to avoid blocking on payment polling
             if (info) {
-                // setOrderInfo({ internalOrderId: info.id, amount: info.amount }); // Removed as per v2.2.64, use internalOrderId and amount from hook
-                await saveIpLog(); // Successfully generated order, log it
-                await checkIpLimit(true); // Silent refresh count displayed in footer
+                // Success
             }
         } catch (e) {
             // Error handled in hook
