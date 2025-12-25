@@ -62,8 +62,8 @@ export const Inventory: React.FC = () => {
     }, []);
 
     useEffect(() => {
-        // v2.2.50: Removed auto-refresh on mount for performance.
-        // Use the manual refresh button or trigger events.
+        // v2.2.51: Restore initial local fetch (fast)
+        fetchShopsData();
 
         // v2.2.22: Listen for global refresh events from utilities
         const handleForceRefresh = () => {
@@ -162,15 +162,8 @@ export const Inventory: React.FC = () => {
         return items;
     };
 
-    // Auto-Refresh Data on Mount (Mocking "enter page")
-    useEffect(() => {
-        // We only want to auto-refresh if we have accounts.
-        if (accounts.length > 0) {
-            handleRefreshData(false); // Silent refresh or visible? User said "enter inventory sidebar, refresh all". Visible is better.
-        }
-    }, [accounts.length]); // Dependency on length so it runs once accounts are loaded from initial fetch?
-    // Initial fetch (L47) sets accounts. So this will trigger.
-    // Issue: L47 sets accounts from local backend. Then this triggers API refresh. Correct.
+    // v2.2.51: Removed auto-sync loop to prevent "Inventory Wipeout" and performance lag.
+    // Data is only synced with Zhuanzhuan when the "Refresh" button is manually clicked.
 
     /**
      * Refresh Data Only (Preserves Occupied Status & Images)
