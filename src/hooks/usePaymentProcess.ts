@@ -360,8 +360,9 @@ export const usePaymentProcess = () => {
                 throw new Error(`[转转下单被拒绝] Code:${orderData.respCode}, Msg: ${errMsg}`);
             }
 
-            // v2.2.86: Call saveCashierDeskInfo to get proper WeChat payment deeplink
+            // v2.2.88: CRITICAL FIX - Use payId, not orderId for saveCashierDeskInfo
             const zzOrderNo = orderData.respData.orderId;
+            const zzPayId = orderData.respData.payId; // <-- This is the key!
             addLog('正在生成支付链接...');
 
             const cashierCents = Math.round(amount * 100);
@@ -384,7 +385,7 @@ export const usePaymentProcess = () => {
             const cashierParams = new URLSearchParams();
             cashierParams.append('reqSource', '1');
             cashierParams.append('mchId', '1001');
-            cashierParams.append('payId', zzOrderNo);
+            cashierParams.append('payId', zzPayId); // <-- Use payId, not orderId!
             cashierParams.append('payMode', 'base');
             cashierParams.append('captureState', '-1');
             cashierParams.append('payList', payListJson); // URLSearchParams will encode automatically
