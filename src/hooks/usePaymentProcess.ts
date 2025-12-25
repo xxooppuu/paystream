@@ -467,7 +467,7 @@ export const usePaymentProcess = () => {
         }
     }, [addLog]); // Removed amount/onComplete from deps as they are passed to startPayment
 
-    const cancelCurrentOrder = useCallback(async () => {
+    const cancelCurrentOrder = useCallback(async (isTimeout = false) => {
         if (order && order.id && order.buyerId) {
             // v2.2.69: Use SAFE Server-Side Cancellation instead of Admin Force-Release
             // This ensures we only cancel OUR order, and backend handles lock release safely (CAS).
@@ -479,10 +479,16 @@ export const usePaymentProcess = () => {
             // If we really want to release:
             await releaseInventory(matchedItem.id, matchedItem.accountId, lockTicket);
         }
-        setStep(0);
+
+        if (isTimeout) {
+            setStep(7); // Stay on Timeout/Expired screen
+        } else {
+            setStep(0); // Go back to Home
+        }
+
         setMatchedItem(null);
         setOrder(null);
-        addLog('用户取消或超时');
+        addLog(isTimeout ? '支付超时' : '用户取消');
     }, [matchedItem, order, lockTicket]);
 
     return {

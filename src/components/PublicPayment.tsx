@@ -71,7 +71,7 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
                 if (remaining <= 0) {
                     setTimeLeft(0);
                     clearInterval(timer);
-                    cancelCurrentOrder();
+                    cancelCurrentOrder(true);
                 } else {
                     setTimeLeft(remaining);
                 }
