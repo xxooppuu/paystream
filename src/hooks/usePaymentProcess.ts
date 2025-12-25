@@ -123,9 +123,13 @@ export const usePaymentProcess = () => {
                     if (err.queueing) {
                         setStep(0.5); // 进入显示排队进度的 UI
                         addLog(`${err.error}`);
-                        if (err.pos) {
-                            setQueuePosition(err.pos);
+                        // v2.2.77: Explicitly cast and ensure fallback
+                        const srvPos = Number(err.pos);
+                        if (!isNaN(srvPos) && srvPos > 0) {
+                            setQueuePosition(srvPos);
                         } else {
+                            // If server strictly returns no position (e.g. queue full), allow attempts as minimal fallback
+                            // But usually users want to know their REAL position
                             setQueuePosition(attempts);
                         }
                     } else {
