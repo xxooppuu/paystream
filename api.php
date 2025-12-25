@@ -512,6 +512,7 @@ function getSettingsData() {
         $val = $row['value'];
         $settings[$row['key']] = (strpos($val, '{') === 0 || strpos($val, '[') === 0) ? json_decode($val, true) : $val;
     }
+    $settings['system_version'] = APP_VERSION;
     return (object)$settings;
 }
 
