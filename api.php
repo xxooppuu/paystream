@@ -725,7 +725,6 @@ function matchAndLockItem($targetPrice, $internalOrderId, $filters = []) {
                         'lockTicket' => $existing['lockTicket'],
                         'internalOrderId' => $internalOrderId
                     ];
-                    }
                 }
             }
         }
