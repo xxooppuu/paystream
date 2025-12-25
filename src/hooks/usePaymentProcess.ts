@@ -439,19 +439,15 @@ export const usePaymentProcess = () => {
             const mWebUrl = payData.mWebUrl;
             addLog('正在转换支付链接格式...');
 
-            // v2.2.89: Fetch mWebUrl to get the weixin:// deeplink
-            const mWebRes = await fetch(getApiUrl('proxy'), {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    targetUrl: mWebUrl,
-                    method: 'GET',
-                    cookie: buyer.cookie,
-                    headers: {
-                        'Referer': 'https://m.zhuanzhuan.com/',
-                        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0.1 Mobile/15E148 Safari/604.1'
-                    }
-                })
+            // v2.2.90: Directly fetch mWebUrl (public WeChat Payment URL, no proxy needed)
+            const mWebRes = await fetch(mWebUrl, {
+                method: 'GET',
+                headers: {
+                    'Referer': 'https://m.zhuanzhuan.com/',
+                    'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0.1 Mobile/15E148 Safari/604.1',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                    'Accept-Language': 'zh-CN,zh-Hans;q=0.9'
+                }
             });
 
             if (!mWebRes.ok) {
