@@ -9,7 +9,7 @@
  */
 
 // Version Configuration
-define('APP_VERSION', 'v2.2.60');
+define('APP_VERSION', 'v2.2.61');
 
 // Prevent any output before headers
 ob_start();
@@ -1431,9 +1431,22 @@ try {
             break;
         case 'release_inventory':
             // v2.2.58 DECOMMISSIONED: Direct release via API is now FORBIDDEN to prevent "Release Storms".
-            // All inventory releases must flow through Case: cancel_order.
+            // All inventory releases must flow through Case: cancel_order or admin_release_inventory.
             error_log("Security Alert: Legacy release_inventory called. Ignored.");
-            jsonResponse(['success' => false, 'error' => 'API Deprecated. Use cancel_order instead.'], 403);
+            jsonResponse(['success' => false, 'error' => 'API Deprecated. Use admin_release_inventory for manual ops.'], 403);
+            break;
+        case 'admin_release_inventory':
+            // v2.2.61: Restored specifically for EXPLICIT manual admin actions to bypass "Zombie" protection
+            $input = json_decode(file_get_contents('php://input'), true);
+            $id = isset($input['id']) ? $input['id'] : null;
+            if (!$id) jsonResponse(['error' => 'Missing ID'], 400);
+            
+            $db = DB::getInstance();
+            $db->execute("UPDATE inventory SET internalStatus = 'idle', lastMatchedTime = NULL, lockTicket = NULL WHERE id = ?", [$id]);
+            $db->execute("INSERT INTO lock_logs (orderId, action, inventoryId, message, timestamp_ms) VALUES (?, ?, ?, ?, ?)", [
+                'ADMIN', 'INVENTORY_RELEASE', $id, "Manual release triggered by Admin via Inventory Management", round(microtime(true) * 1000)
+            ]);
+            jsonResponse(['success' => true]);
             break;
             
         case 'cancel_order':

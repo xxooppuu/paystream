@@ -42,8 +42,8 @@ export const releaseInventory = async (inventoryId: string | undefined, accountI
     if (!inventoryId) return;
 
     try {
-        // v2.1.6: Atomic Release via Backend with accountId for precision
-        await fetch(getApiUrl('release_inventory'), {
+        // v2.2.61: Use the dedicated ADMIN release endpoint to bypass "Zombie" protection
+        await fetch(getApiUrl('admin_release_inventory'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -51,7 +51,7 @@ export const releaseInventory = async (inventoryId: string | undefined, accountI
                 accountId: accountId
             })
         });
-        console.log(`[Atomic] Inventory ${inventoryId} (Acc: ${accountId}) released.`);
+        console.log(`[Admin] Inventory ${inventoryId} (Acc: ${accountId}) manually released.`);
         // v2.2.22: Trigger global UI refresh
         window.dispatchEvent(new CustomEvent('refresh-inventory'));
     } catch (e) {
