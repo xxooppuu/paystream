@@ -26,7 +26,7 @@ import { getApiUrl, PROXY_URL } from './config';
 import { SetupWizard } from './components/SetupWizard';
 const App: React.FC = () => {
   useEffect(() => {
-    document.title = 'PayStream Admin v2.2.55';
+    document.title = 'PayStream Admin v2.2.56';
   }, []);
 
   // Check for Public Payment Route
@@ -279,11 +279,12 @@ const App: React.FC = () => {
         for (let i = 0; i < updatedOrders.length; i++) {
           const o = updatedOrders[i];
           if (o.status === OrderStatus.PENDING) {
-            const createdTime = new Date(o.createdAt).getTime();
+            // v2.2.56: Use solid Unix Milliseconds instead of timezone-shaky date strings
+            const createdTime = o.createdAtMs ? Number(o.createdAtMs) : new Date(o.createdAt).getTime();
             const validitySec = settings?.validityDuration ? Number(settings.validityDuration) : 180;
             const now = Date.now() + clockDrift;
-            if (now - createdTime > validitySec * 1000) { // Dynamic validity with sync time
-              console.log(`Auto-cancelling expired order: ${o.id}`);
+            if (now - createdTime > validitySec * 1000) {
+              console.log(`Auto-cancelling expired order: ${o.id} (Created: ${createdTime}, Now: ${now}, Diff: ${now - createdTime}ms)`);
 
               // Attempt API Cancel
               // Even if API fails (e.g. legacy order), we might force cancel local status?
@@ -642,7 +643,7 @@ const App: React.FC = () => {
           </div>
           {/* Version Footer */}
           <div className="fixed bottom-4 right-4 text-xs text-slate-400 bg-white px-3 py-1 rounded-full shadow-sm border border-slate-200">
-            Admin v2.2.55-MySQL
+            Admin v2.2.56-MySQL
           </div>
         </main>
       </div>

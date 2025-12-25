@@ -52,6 +52,7 @@ export interface Order {
   channel: string; // e.g. 'WeChat', 'Alipay'
   method: string; // e.g. 'Credit Card', 'Balance'
   createdAt: string;
+  createdAtMs?: number; // v2.2.56: Unix timestamp for reliable expiration check
   inventoryId?: string; // ID of the locked inventory item
   accountId?: string;   // ID of the seller account
   buyerId?: string;     // ID of the buyer account (for cancellation/viewing)

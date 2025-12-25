@@ -9,7 +9,7 @@
  */
 
 // Version Configuration
-define('APP_VERSION', 'v2.2.55');
+define('APP_VERSION', 'v2.2.56');
 
 // Prevent any output before headers
 ob_start();
@@ -341,8 +341,8 @@ function handleFileRequest($filename, $default = []) {
 function atomicAppendOrder($orderData) {
     try {
         $db = DB::getInstance();
-        $sql = "INSERT INTO orders (id, orderNo, customer, amount, currency, status, channel, method, createdAt, inventoryId, accountId, buyerId, internalOrderId) 
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        $sql = "INSERT INTO orders (id, orderNo, customer, amount, currency, status, channel, method, createdAt, createdAtMs, inventoryId, accountId, buyerId, internalOrderId) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON DUPLICATE KEY UPDATE 
                 orderNo=COALESCE(VALUES(orderNo), orderNo), 
                 customer=VALUES(customer), 
@@ -351,11 +351,13 @@ function atomicAppendOrder($orderData) {
                     WHEN VALUES(status) = 'queueing' AND status IN ('success', 'pending', 'cancelled', 'failed') THEN status 
                     ELSE VALUES(status) 
                 END, 
+                createdAtMs = COALESCE(createdAtMs, VALUES(createdAtMs)),
                 inventoryId=COALESCE(VALUES(inventoryId), inventoryId), 
                 accountId=COALESCE(VALUES(accountId), accountId), 
                 buyerId=COALESCE(VALUES(buyerId), buyerId), 
                 internalOrderId=VALUES(internalOrderId)";
         
+        $nowMs = round(microtime(true) * 1000);
         $db->query($sql, [
             $orderData['id'],
             isset($orderData['orderNo']) ? $orderData['orderNo'] : null,
@@ -366,6 +368,7 @@ function atomicAppendOrder($orderData) {
             isset($orderData['channel']) ? $orderData['channel'] : 'Zhuanzhuan',
             isset($orderData['method']) ? $orderData['method'] : 'WeChat',
             $orderData['createdAt'],
+            isset($orderData['createdAtMs']) ? $orderData['createdAtMs'] : $nowMs,
             isset($orderData['inventoryId']) ? $orderData['inventoryId'] : null,
             isset($orderData['accountId']) ? $orderData['accountId'] : null,
             isset($orderData['buyerId']) ? $orderData['buyerId'] : null,
@@ -700,10 +703,9 @@ function matchAndLockItem($targetPrice, $internalOrderId, $filters = []) {
                 FROM inventory i
                 JOIN shops s ON i.shopId = s.id
                 WHERE (i.status LIKE '%在售%' OR i.status LIKE '%待卖%' OR i.status LIKE '%出售%' OR i.status LIKE '%代卖%')
-                AND i.internalStatus = 'idle'
-                AND ABS(i.price - ?) < 0.01";
+                AND i.internalStatus = 'idle'";
 
-        $params = [$price];
+        $params = [];
         
         if ($specificShopId) {
             $sql .= " AND i.shopId = ?";
@@ -719,24 +721,23 @@ function matchAndLockItem($targetPrice, $internalOrderId, $filters = []) {
          $queueSql = "SELECT id FROM orders 
                       WHERE status = 'queueing' 
                       AND (lastHeartbeat > ? OR id = ?)
-                      AND amount = ?
-                      ORDER BY createdAt ASC, id ASC
+                      ORDER BY createdAtMs ASC, id ASC
                       FOR UPDATE";
-         $queue = $db->fetchAll($queueSql, [$activeCutoff, $internalOrderId, $price]);
+         $queue = $db->fetchAll($queueSql, [$activeCutoff, $internalOrderId]);
         $queueIds = array_column($queue, 'id');
         $pos = array_search($internalOrderId, $queueIds);
 
         if ($pos === false) {
             // First Principles: createdAt only on INSERT, ignore on DUPLICATE
-            $db->query("INSERT INTO orders (id, customer, amount, status, channel, method, createdAt, internalOrderId, lastHeartbeat) 
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            $db->query("INSERT INTO orders (id, customer, amount, status, channel, method, createdAt, createdAtMs, internalOrderId, lastHeartbeat) 
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ON DUPLICATE KEY UPDATE 
                         status = CASE 
                             WHEN VALUES(status) = 'queueing' AND status IN ('success', 'pending', 'cancelled', 'failed') THEN status 
                             ELSE VALUES(status) 
                         END,
                         lastHeartbeat = VALUES(lastHeartbeat)", [
-                $internalOrderId, 'Guest', $price, 'queueing', 'Zhuanzhuan', 'WeChat', $createdAt, $internalOrderId, $nowMs, $nowMs
+                $internalOrderId, 'Guest', $price, 'queueing', 'Zhuanzhuan', 'WeChat', $createdAt, $nowMs, $internalOrderId, $nowMs
             ]);
             
             // Re-fetch queue
@@ -1041,15 +1042,19 @@ function performSetup($adminPassword, $dbConfig) {
                 status VARCHAR(50),
                 channel VARCHAR(50),
                 method VARCHAR(50),
-                createdAt VARCHAR(50),
+                createdAt VARCHAR(100),
+                createdAtMs BIGINT,
                 inventoryId VARCHAR(100),
                 accountId VARCHAR(100),
                 buyerId VARCHAR(100),
                 internalOrderId VARCHAR(100),
+                lastHeartbeat BIGINT,
+                expireAt BIGINT,
                 lockTicket VARCHAR(100),
                 INDEX idx_internal (internalOrderId),
                 INDEX idx_status (status),
-                INDEX idx_created (createdAt)
+                INDEX idx_created (createdAt),
+                INDEX idx_created_ms (createdAtMs)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
             
             CREATE TABLE IF NOT EXISTS ip_logs (
@@ -1111,6 +1116,22 @@ function performSetup($adminPassword, $dbConfig) {
         } catch (Exception $e) {
             // Column likely exists, ignore
         }
+        try {
+            $pdo->exec("ALTER TABLE orders ADD COLUMN createdAtMs BIGINT");
+        } catch (Exception $e) {
+            // Column likely exists, ignore
+        }
+        try {
+            $pdo->exec("ALTER TABLE orders MODIFY COLUMN createdAt VARCHAR(100)");
+        } catch (Exception $e) {
+            // Column likely exists, ignore
+        }
+        try {
+            $pdo->exec("ALTER TABLE orders ADD INDEX idx_created_ms (createdAtMs)");
+        } catch (Exception $e) {
+            // Index likely exists, ignore
+        }
+
 
         // 4. Migration from JSON
         $migrated = [];
@@ -1227,6 +1248,14 @@ try {
                 INDEX idx_order (orderId),
                 INDEX idx_ts (timestamp_ms)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+            
+            // v2.2.56 Auto-Migration: Ensure 'createdAtMs' exists in 'orders'
+            try { $db->query("ALTER TABLE orders ADD COLUMN createdAtMs BIGINT AFTER createdAt"); } catch (Exception $e) {}
+            try { $db->query("CREATE INDEX idx_created_ms ON orders(createdAtMs)"); } catch (Exception $e) {}
+            try { $db->query("ALTER TABLE orders MODIFY COLUMN createdAt VARCHAR(100)"); } catch (Exception $e) {}
+            try { $db->query("ALTER TABLE orders ADD COLUMN lastHeartbeat BIGINT DEFAULT 0"); } catch (Exception $e) {}
+            try { $db->query("ALTER TABLE orders ADD COLUMN expireAt BIGINT"); } catch (Exception $e) {}
+
         } catch (Exception $e) {
             // Table exists or DB down, handled by individual actions
         }
@@ -1401,9 +1430,12 @@ try {
             
             // 2. Mark order as cancelled
             $db->query("UPDATE orders SET status = 'cancelled' WHERE id = ? AND status IN ('queueing', 'pending')", [$orderId]);
-            $db->query("INSERT INTO lock_logs (orderId, action, message, timestamp_ms) VALUES (?, ?, ?, ?)", [
-                $orderId, 'ORDER_CANCEL', "Order manually cancelled via server-side API", round(microtime(true) * 1000)
-            ]);
+            // v2.2.54: Audit Log for Order Creation
+            if ($db->rowCount() > 0) { // Check if the update actually changed a row
+                $db->query("INSERT INTO lock_logs (orderId, action, message, timestamp_ms) VALUES (?, ?, ?, ?)", [
+                    $orderId, 'ORDER_CANCEL', "Order manually cancelled via server-side API", round(microtime(true) * 1000)
+                ]);
+            }
             
             // 3. Release inventory if associated
             if (!empty($order['inventoryId'])) {
