@@ -9,7 +9,7 @@
  */
 
 // Version Configuration
-define('APP_VERSION', 'v2.2.56');
+define('APP_VERSION', 'v2.2.57');
 
 // Prevent any output before headers
 ob_start();
@@ -111,6 +111,22 @@ class DB {
 
     public function lastInsertId() {
         return $this->pdo->lastInsertId();
+    }
+
+    public function rowCount() {
+        return $this->pdo->lastInsertId() ? 1 : 0; // Fallback or use global
+    }
+    
+    // v2.2.57: Added direct statement capture for rowCount support
+    private $lastStmt = null;
+    public function execute($sql, $params = []) {
+        $this->lastStmt = $this->pdo->prepare($sql);
+        $this->lastStmt->execute($params);
+        return $this->lastStmt;
+    }
+    
+    public function getAffectedRows() {
+        return $this->lastStmt ? $this->lastStmt->rowCount() : 0;
     }
 }
 
@@ -796,8 +812,14 @@ function matchAndLockItem($targetPrice, $internalOrderId, $filters = []) {
                     $matched = true;
                     $match = $currentItem;
                     $db->query("INSERT INTO lock_logs (orderId, action, pos, inventoryId, message, timestamp_ms) VALUES (?, ?, ?, ?, ?, ?)", [
-                        $internalOrderId, 'LOCK_SUCCESS', $pos, $currentItem['id'], "Successfully matched and updated order", $nowMs
+                        $internalOrderId, 'LOCK_SUCCESS', $pos, $currentItem['id'], "Successfully matched (Global FIFO) and updated order", $nowMs
                     ]);
+                    
+                    // v2.2.50: Price Auto-Sync to Inventory (Moved inside match transaction)
+                    $priceNum = (float)$price;
+                    $priceStr = number_format($priceNum, 2, '.', '');
+                    $pdo->prepare("UPDATE inventory SET priceNum = ?, price = ? WHERE id = ?")
+                        ->execute([$priceNum, $priceStr, $currentItem['id']]);
                 } else {
                     // TRANSACTIONAL ROLLBACK: Order was cancelled or changed while we were locking inventory
                     $pdo->prepare("UPDATE inventory SET internalStatus = 'idle', lastMatchedTime = NULL, lockTicket = NULL WHERE id = ? AND lockTicket = ?")
@@ -1429,9 +1451,10 @@ try {
             }
             
             // 2. Mark order as cancelled
-            $db->query("UPDATE orders SET status = 'cancelled' WHERE id = ? AND status IN ('queueing', 'pending')", [$orderId]);
-            // v2.2.54: Audit Log for Order Creation
-            if ($db->rowCount() > 0) { // Check if the update actually changed a row
+            $cancelStmt = $pdo->prepare("UPDATE orders SET status = 'cancelled' WHERE id = ? AND status IN ('queueing', 'pending')");
+            $cancelStmt->execute([$orderId]);
+            
+            if ($cancelStmt->rowCount() > 0) {
                 $db->query("INSERT INTO lock_logs (orderId, action, message, timestamp_ms) VALUES (?, ?, ?, ?)", [
                     $orderId, 'ORDER_CANCEL', "Order manually cancelled via server-side API", round(microtime(true) * 1000)
                 ]);
