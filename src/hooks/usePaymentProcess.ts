@@ -365,7 +365,7 @@ export const usePaymentProcess = () => {
             addLog('正在生成支付链接...');
 
             const cashierCents = Math.round(amount * 100);
-            const payListParam = encodeURIComponent(JSON.stringify([{
+            const payListJson = JSON.stringify([{
                 "payMethod": "0",
                 "tradeType": "NEW_TRADE",
                 "money": cashierCents.toString(),
@@ -379,7 +379,7 @@ export const usePaymentProcess = () => {
                     "payConfigKey": "showChannel:SHOW_WX;nameRuleId:1821105009618587136"
                 },
                 "tradeTypeKey": "NEW_TRADE"
-            }]));
+            }]);
 
             const cashierParams = new URLSearchParams();
             cashierParams.append('reqSource', '1');
@@ -387,7 +387,7 @@ export const usePaymentProcess = () => {
             cashierParams.append('payId', zzOrderNo);
             cashierParams.append('payMode', 'base');
             cashierParams.append('captureState', '-1');
-            cashierParams.append('payList', decodeURIComponent(payListParam));
+            cashierParams.append('payList', payListJson); // URLSearchParams will encode automatically
 
             const cashierRes = await fetch(getApiUrl('proxy'), {
                 method: 'POST',
