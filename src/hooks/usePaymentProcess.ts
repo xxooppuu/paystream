@@ -436,9 +436,46 @@ export const usePaymentProcess = () => {
                 throw new Error('支付链接未返回，请稍后重试');
             }
 
-            const payUrl = payData.mWebUrl;
-            setPaymentLink(payUrl);
-            addLog(`支付链接已生成`);
+            const mWebUrl = payData.mWebUrl;
+            addLog('正在转换支付链接格式...');
+
+            // v2.2.89: Fetch mWebUrl to get the weixin:// deeplink
+            const mWebRes = await fetch(getApiUrl('proxy'), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    targetUrl: mWebUrl,
+                    method: 'GET',
+                    cookie: buyer.cookie,
+                    headers: {
+                        'Referer': 'https://m.zhuanzhuan.com/',
+                        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0.1 Mobile/15E148 Safari/604.1'
+                    }
+                })
+            });
+
+            if (!mWebRes.ok) {
+                throw new Error(`获取支付链接失败: HTTP ${mWebRes.status}`);
+            }
+
+            const htmlText = await mWebRes.text();
+
+            // Extract weixin:// deeplink from HTML
+            // Looking for pattern: var url="weixin://wap/pay?..."
+            const deeplinkMatch = htmlText.match(/var\s+url\s*=\s*"(weixin:\/\/[^"]+)"/);
+            if (!deeplinkMatch || !deeplinkMatch[1]) {
+                // Fallback: try to find it in deeplink: field
+                const altMatch = htmlText.match(/deeplink\s*:\s*"(weixin:\/\/[^"]+)"/);
+                if (!altMatch || !altMatch[1]) {
+                    console.error('Failed to extract deeplink from HTML:', htmlText.substring(0, 500));
+                    throw new Error('无法提取支付链接，请稍后重试');
+                }
+                setPaymentLink(altMatch[1]);
+                addLog(`支付链接已生成 (deeplink)`);
+            } else {
+                setPaymentLink(deeplinkMatch[1]);
+                addLog(`支付链接已生成 (weixin://)`);
+            }
 
             const newOrder: Order = {
                 id: `ZZPAY${Date.now()}`,
