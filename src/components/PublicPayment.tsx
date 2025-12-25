@@ -227,6 +227,41 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
         return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-red-500 font-bold">无效的收款链接</div>;
     }
 
+    // v2.2.84: Handle Rest Mode (Store Closed) - Bypass WeChat Redirect
+    // Check for explicit false or numeric 0
+    if (config.isOpen === false || config.isOpen === 0) {
+        return (
+            <div className="min-h-screen bg-slate-100 flex items-center justify-center p-6">
+                <div className="bg-white max-w-md w-full rounded-2xl shadow-xl overflow-hidden">
+                    <div className="bg-amber-500 h-2 w-full" />
+                    <div className="p-8 text-center">
+                        <div className="w-20 h-20 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-6 text-amber-500">
+                            <Clock className="w-10 h-10" />
+                        </div>
+                        <h2 className="text-2xl font-bold text-slate-800 mb-2">商家休息中</h2>
+                        <p className="text-slate-500 mb-6">商家当前暂不营业，请稍后再来。</p>
+
+                        {config.notice && (
+                            <div className="bg-amber-50 rounded-xl p-4 border border-amber-100 text-left">
+                                <div className="flex items-start gap-3">
+                                    <AlertCircle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+                                    <div>
+                                        <h4 className="font-bold text-amber-800 text-sm mb-1">商家公告</h4>
+                                        <p className="text-sm text-amber-700 leading-relaxed whitespace-pre-wrap">{config.notice}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="mt-8 text-xs text-slate-400">
+                            System Rest Mode • {pageId}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
     if (isWeChat) {
         return (
             <div className="fixed inset-0 bg-slate-900/95 z-50 flex flex-col items-center justify-center p-6 text-white">
