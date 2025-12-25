@@ -9,7 +9,7 @@
  */
 
 // Version Configuration
-define('APP_VERSION', 'v2.2.58');
+define('APP_VERSION', 'v2.2.59');
 
 // Prevent any output before headers
 ob_start();
@@ -95,11 +95,6 @@ class DB {
         return $this->pdo;
     }
 
-    public function query($sql, $params = []) {
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->execute($params);
-        return $stmt;
-    }
 
     public function fetchAll($sql, $params = []) {
         return $this->query($sql, $params)->fetchAll();
