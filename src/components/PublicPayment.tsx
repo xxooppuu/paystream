@@ -424,16 +424,13 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
                             case 4:
                                 return (
                                     <div className="text-center py-12 space-y-6 animate-fade-in">
-                                        <div className="bg-amber-50 p-6 rounded-2xl border border-amber-100 text-amber-800 animate-pulse-slow relative overflow-hidden">
+                                        <div className="bg-blue-50 p-6 rounded-2xl border border-blue-100 text-blue-800 animate-pulse-slow relative overflow-hidden">
                                             <div className="flex flex-col items-center gap-3 relative z-10">
-                                                <Loader2 className="w-6 h-6 animate-spin text-amber-600" />
+                                                <div className="w-8 h-8 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
                                                 <div>
-                                                    <h3 className="font-bold text-lg mb-1">正在排队，请稍后</h3>
-                                                    <p className="text-sm">单号: {internalOrderId}</p>
+                                                    <h3 className="font-bold text-lg mb-1">正在为您匹配订单...</h3>
+                                                    <p className="text-sm opacity-80">请勿关闭页面，马上就好</p>
                                                 </div>
-                                            </div>
-                                            <div className="mt-4 bg-white/50 rounded-xl p-3 text-center">
-                                                <span className="text-sm font-bold text-amber-900 block">目前排位: 第 {queuePosition || '?'} 位</span>
                                             </div>
                                         </div>
                                     </div>
