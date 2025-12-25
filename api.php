@@ -9,7 +9,7 @@
  */
 
 // Version Configuration
-define('APP_VERSION', 'v2.2.78');
+define('APP_VERSION', 'v2.2.79');
 
 // Prevent any output before headers
 ob_start();
@@ -1337,6 +1337,10 @@ try {
             try { $db->query("ALTER TABLE orders MODIFY COLUMN createdAt VARCHAR(100)"); } catch (Exception $e) {}
             try { $db->query("ALTER TABLE orders ADD COLUMN lastHeartbeat BIGINT DEFAULT 0"); } catch (Exception $e) {}
             try { $db->query("ALTER TABLE orders ADD COLUMN expireAt BIGINT"); } catch (Exception $e) {}
+
+            // v2.2.78: Migration - Ensure ip_logs has 'type' column
+            try { $db->query("ALTER TABLE ip_logs ADD COLUMN type VARCHAR(100)"); } catch (Exception $e) {}
+            try { $db->query("ALTER TABLE ip_logs ADD INDEX idx_type (type)"); } catch (Exception $e) {}
 
         } catch (Exception $e) {
             // Table exists or DB down, handled by individual actions
