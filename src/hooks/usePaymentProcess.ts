@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { InventoryItem, Order, StoreAccount, OrderStatus } from '../types';
 import { getApiUrl } from '../config';
-import { releaseInventory } from '../utils/orderActions';
+import { releaseInventory, performOrderCancellation } from '../utils/orderActions';
 
 const POLLING_INTERVAL_MS = 3000;
 const QUEUE_TIMEOUT_MS = 60000;
@@ -29,7 +29,8 @@ export const usePaymentProcess = () => {
             now.getHours().toString().padStart(2, '0') +
             now.getMinutes().toString().padStart(2, '0') +
             now.getSeconds().toString().padStart(2, '0');
-        const randPart = Math.floor(1000 + Math.random() * 9000);
+        // v2.2.69: Increase entropy to 6 digits to prevent SQL Duplicate Entry
+        const randPart = Math.floor(100000 + Math.random() * 900000);
         return `ZZPAY${datePart}${randPart}`;
     };
     const [settings, setSettings] = useState<any>(null);
@@ -462,14 +463,22 @@ export const usePaymentProcess = () => {
     }, [addLog]); // Removed amount/onComplete from deps as they are passed to startPayment
 
     const cancelCurrentOrder = useCallback(async () => {
-        if (matchedItem) {
-            await releaseInventory(matchedItem.id);
+        if (order && order.id && order.buyerId) {
+            // v2.2.69: Use SAFE Server-Side Cancellation instead of Admin Force-Release
+            // This ensures we only cancel OUR order, and backend handles lock release safely (CAS).
+            await performOrderCancellation(order.id, order.buyerId);
+        } else if (matchedItem) {
+            // Fallback if order struct isn't fully ready (rare): Try to release lock with ticket
+            // But preferably we should rely on backend timeout if order isn't created.
+            // For v2.2.69, we'll just soft-reset and let backend Handle 'queueing' cleanup.
+            // If we really want to release:
+            await releaseInventory(matchedItem.id, matchedItem.accountId, lockTicket);
         }
         setStep(0);
         setMatchedItem(null);
         setOrder(null);
-        addLog('用户取消');
-    }, [matchedItem]);
+        addLog('用户取消或超时');
+    }, [matchedItem, order, lockTicket]);
 
     return {
         startPayment,

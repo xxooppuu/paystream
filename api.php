@@ -9,7 +9,7 @@
  */
 
 // Version Configuration
-define('APP_VERSION', 'v2.2.67');
+define('APP_VERSION', 'v2.2.69');
 
 // Prevent any output before headers
 ob_start();
@@ -920,16 +920,49 @@ function atomicLockItem($inventoryId, $matchedTime) {
     }
 }
 
-function atomicUnlockItem($id) {
+function atomicUnlockItem($id, $expectedTicket = null) {
     try {
         $db = DB::getInstance();
         $pdo = $db->getConnection();
         $pdo->beginTransaction();
 
-        $stmt = $pdo->prepare("UPDATE inventory SET internalStatus = 'idle', lastMatchedTime = NULL, lockTicket = NULL WHERE id = ?");
-        $stmt->execute([$id]);
+        $sql = "UPDATE inventory SET internalStatus = 'idle', lastMatchedTime = NULL, lockTicket = NULL WHERE id = ?";
+        $params = [$id];
         
-        // v2.2.54: Log Release
+        // v2.2.68 CAS Protection: If a specific ticket is expected, enforce it!
+        if ($expectedTicket) {
+            $sql .= " AND lockTicket = ?";
+            $params[] = $expectedTicket;
+        }
+
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        
+        if ($stmt->rowCount() > 0) {
+             // Real release happened
+             $pdo->commit();
+             // v2.2.69: Enrich Log with Source Info (IP/UA) to detect Phantom Admins
+             $clientInfo = $_SERVER['REMOTE_ADDR'] . ' ' . ($_SERVER['HTTP_USER_AGENT'] ?? 'Unknown');
+             $db->query("INSERT INTO lock_logs (action, inventoryId, message, timestamp_ms) VALUES (?, ?, ?, ?)", [
+                'INVENTORY_RELEASE', $id, "Manual release success (Ticket: " . ($expectedTicket ?: 'Force') . ") by [$clientInfo]", round(microtime(true) * 1000)
+             ]);
+             return true;
+        } else {
+             // Nothing updated? Maybe already idle OR ticket mismatch
+             $pdo->rollBack();
+             
+             // Check if it was a mismatch
+             if ($expectedTicket) {
+                 $current = $db->fetchOne("SELECT lockTicket FROM inventory WHERE id = ?", [$id]);
+                 $actual = $current ? $current['lockTicket'] : 'null';
+                 $db->query("INSERT INTO lock_logs (action, inventoryId, message, timestamp_ms) VALUES (?, ?, ?, ?)", [
+                    'RELEASE_IGNORE', $id, "Admin release rejected: Stale ticket ($expectedTicket vs Actual $actual)", round(microtime(true) * 1000)
+                 ]);
+                 return "商品已被其他订单锁定 (Ticket mismatch)，释放失败。请刷新页面查看最新状态。";
+             }
+             
+             return true; // Was already idle, effectively success
+        }
         $db->query("INSERT INTO lock_logs (action, inventoryId, message, timestamp_ms) VALUES (?, ?, ?, ?)", [
             'INVENTORY_RELEASE', $id, "Physical inventory release triggered", round(microtime(true) * 1000)
         ]);
@@ -1456,14 +1489,16 @@ try {
             // v2.2.61: Restored specifically for EXPLICIT manual admin actions to bypass "Zombie" protection
             $input = json_decode(file_get_contents('php://input'), true);
             $id = isset($input['id']) ? $input['id'] : null;
+            $ticket = isset($input['lockTicket']) ? $input['lockTicket'] : null; // v2.2.68: Optional ticket for safety
+
             if (!$id) jsonResponse(['error' => 'Missing ID'], 400);
             
-            $db = DB::getInstance();
-            $db->execute("UPDATE inventory SET internalStatus = 'idle', lastMatchedTime = NULL, lockTicket = NULL WHERE id = ?", [$id]);
-            $db->execute("INSERT INTO lock_logs (orderId, action, inventoryId, message, timestamp_ms) VALUES (?, ?, ?, ?, ?)", [
-                'ADMIN', 'INVENTORY_RELEASE', $id, "Manual release triggered by Admin via Inventory Management", round(microtime(true) * 1000)
-            ]);
-            jsonResponse(['success' => true]);
+            $res = atomicUnlockItem($id, $ticket);
+            if ($res === true) {
+                jsonResponse(['success' => true]);
+            } else {
+                jsonResponse(['error' => $res], 409);
+            }
             break;
             
         case 'cancel_order':

@@ -35,10 +35,12 @@ export interface InventoryItem {
   priceNum: number;
   picUrl: string;
   status: string;
-  internalStatus?: 'idle' | 'occupied' | 'sold';
+  internalStatus: 'idle' | 'occupied' | 'sold';
+  autoReleaseTime?: number; // timestamp
+  lastMatchedTime?: number; // timestamp
+  lockTicket?: string | null; // v2.2.68: For CAS Protection
   accountId: string;
   accountRemark: string;
-  lastMatchedTime?: number;
 }
 
 export interface Order {

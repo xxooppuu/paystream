@@ -38,23 +38,24 @@ export const performOrderCancellation = async (orderId: string, buyerId: string)
     }
 };
 
-export const releaseInventory = async (inventoryId: string | undefined, accountId?: string) => {
-    if (!inventoryId) return;
-
+export const releaseInventory = async (inventoryId: string, accountId?: string, lockTicket?: string | null) => {
     try {
-        // v2.2.61: Use the dedicated ADMIN release endpoint to bypass "Zombie" protection
-        await fetch(getApiUrl('admin_release_inventory'), {
+        const res = await fetch(getApiUrl('admin_release_inventory'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 id: inventoryId,
-                accountId: accountId
+                accountId, // Optional, for logging/context
+                lockTicket // v2.2.68: Safe Release Ticket
             })
         });
-        console.log(`[Admin] Inventory ${inventoryId} (Acc: ${accountId}) manually released.`);
-        // v2.2.22: Trigger global UI refresh
-        window.dispatchEvent(new CustomEvent('refresh-inventory'));
-    } catch (e) {
-        console.error("Failed to release inventory", e);
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.error || '由服务器拒绝释放');
+        }
+        return await res.json();
+    } catch (error) {
+        console.error("Release failed", error);
+        throw error;
     }
 };

@@ -153,6 +153,7 @@ export const Inventory: React.FC = () => {
                         price: child.price,
                         priceNum: parseFloat(child.priceNum || child.price.replace(/,/g, '')) || 0, // Fallback parsing
                         status: child.statusTip,
+                        internalStatus: 'idle',
                         accountId: account.id,
                         accountRemark: account.remark
                     });
@@ -315,7 +316,15 @@ export const Inventory: React.FC = () => {
         setInventory(updatedInventory);
 
         // v2.1.4: Use Atomic Release via Utility
-        await releaseInventory(item.id, item.accountId);
+        // v2.2.68: Pass lockTicket for CAS protection to prevent releasing re-locked items
+        try {
+            await releaseInventory(item.id, item.accountId, item.lockTicket);
+        } catch (e: any) {
+            alert(`释放失败: ${e.message}`);
+            // Revert local optimistic update if failed
+            handleRefreshItem(item); // Refresh to show true state
+            return;
+        }
 
         // v2.2.20: Force refresh from backend to ensure state sync
         // v2.2.22: Dispatch global event instead of calling window.refreshShops
