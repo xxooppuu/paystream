@@ -25,7 +25,7 @@ import { ViewState, Order, OrderStatus } from './types';
 import { getApiUrl, PROXY_URL, APP_VERSION } from './config';
 import { SetupWizard } from './components/SetupWizard';
 const App: React.FC = () => {
-  document.title = 'PayStream Admin v2.2.82 (FIXED)';
+  document.title = 'PayStream Admin v2.2.83 (FIXED)';
 
   // Check for Public Payment Route
   const [publicPayId, setPublicPayId] = useState<string | null>(null);
@@ -102,8 +102,11 @@ const App: React.FC = () => {
         const text = await res.text();
         try {
           const data = JSON.parse(text);
-          // DEBUG v2.2.9
-          alert(`[DEBUG v2.2.9]\nStatus: ${data.status}`);
+          // DEBUG v2.2.9: Only show if NOT on public payment page
+          const params = new URLSearchParams(window.location.search);
+          if (!params.get('pay')) {
+            alert(`[DEBUG v2.2.9]\nStatus: ${data.status}`);
+          }
           if (data.status === 'needs_setup' || data.installed === false) {
             setNeedsSetup(true);
           } else {
@@ -537,7 +540,7 @@ const App: React.FC = () => {
       <div className="min-h-screen bg-[#0f172a] flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
           <div className="w-12 h-12 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
-          <p className="text-center text-gray-500 text-xs mt-8">Admin v2.2.82-MySQL &copy; 2025 PayStream. All rights reserved.</p>
+          <p className="text-center text-gray-500 text-xs mt-8">Admin v2.2.83-MySQL &copy; 2025 PayStream. All rights reserved.</p>
         </div>
       </div>
     );

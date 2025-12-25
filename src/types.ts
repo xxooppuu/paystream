@@ -87,11 +87,11 @@ export interface PaymentPageConfig {
   minAmount?: number;
   maxAmount?: number;
   notice?: string;
-  createdAt: number;
-  isOpen?: boolean;
+  isOpen?: boolean | number; // Allow 0/1 from DB
   ipLimitTime?: number; // In hours
   ipLimitCount?: number;
   ipWhitelist?: string; // Comma-separated
+  createdAt?: number;
 }
 
 export type ViewState = 'dashboard' | 'orders' | 'inventory' | 'test-payment' | 'config' | 'channels' | 'settings' | 'payment-pages';

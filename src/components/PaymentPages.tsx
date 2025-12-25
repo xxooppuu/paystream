@@ -91,7 +91,7 @@ export const PaymentPages: React.FC = () => {
         setMinAmount(page.minAmount?.toString() || '');
         setMaxAmount(page.maxAmount?.toString() || '');
         setNotice(page.notice || '');
-        setIsOpen(page.isOpen !== false); // Default true
+        setIsOpen(page.isOpen !== false && page.isOpen !== 0); // Default true, treat 0 as false
         setIpLimitTime(page.ipLimitTime?.toString() || '');
         setIpLimitCount(page.ipLimitCount?.toString() || '');
         setIpWhitelist(page.ipWhitelist || '');
@@ -99,7 +99,14 @@ export const PaymentPages: React.FC = () => {
     };
 
     const toggleOpen = async (id: string) => {
-        const updatedPages = pages.map(p => p.id === id ? { ...p, isOpen: p.isOpen === false } : p);
+        // v2.2.83: Handle numeric 0/1 from DB correctly for boolean toggle
+        const updatedPages = pages.map(p => {
+            if (p.id === id) {
+                const current = (p.isOpen !== false && p.isOpen !== 0);
+                return { ...p, isOpen: !current };
+            }
+            return p;
+        });
         setPages(updatedPages);
         await fetch(getApiUrl('payment_pages'), {
             method: 'POST',
@@ -148,12 +155,12 @@ export const PaymentPages: React.FC = () => {
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {pages.map(page => (
-                    <div key={page.id} className={`bg-white p-6 rounded-xl border ${page.isOpen === false ? 'border-red-100 bg-red-50/10' : 'border-slate-200'} shadow-sm hover:shadow-md transition-shadow`}>
+                    <div key={page.id} className={`bg-white p-6 rounded-xl border ${(page.isOpen === false || page.isOpen === 0) ? 'border-red-100 bg-red-50/10' : 'border-slate-200'} shadow-sm hover:shadow-md transition-shadow`}>
                         <div className="flex justify-between items-start mb-4">
                             <div>
                                 <div className="flex items-center gap-2">
                                     <h3 className="font-bold text-lg text-slate-800">{page.title}</h3>
-                                    {page.isOpen === false && (
+                                    {(page.isOpen === false || page.isOpen === 0) && (
                                         <span className="text-[10px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-bold">商家休息中</span>
                                     )}
                                 </div>
@@ -173,9 +180,9 @@ export const PaymentPages: React.FC = () => {
                             </button>
                             <button
                                 onClick={() => toggleOpen(page.id)}
-                                className={`text-xs px-2 py-1 rounded transition-colors ${page.isOpen !== false ? 'bg-amber-100 text-amber-700 hover:bg-amber-200' : 'bg-green-100 text-green-700 hover:bg-green-200'}`}
+                                className={`text-xs px-2 py-1 rounded transition-colors ${page.isOpen !== false && page.isOpen !== 0 ? 'bg-amber-100 text-amber-700 hover:bg-amber-200' : 'bg-green-100 text-green-700 hover:bg-green-200'}`}
                             >
-                                {page.isOpen !== false ? '设为休息' : '开始营业'}
+                                {page.isOpen !== false && page.isOpen !== 0 ? '设为休息' : '开始营业'}
                             </button>
                         </div>
 
