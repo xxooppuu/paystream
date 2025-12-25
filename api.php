@@ -9,7 +9,7 @@
  */
 
 // Version Configuration
-define('APP_VERSION', 'v2.2.62');
+define('APP_VERSION', 'v2.2.63');
 
 // Prevent any output before headers
 ob_start();
@@ -370,7 +370,7 @@ function atomicAppendOrder($orderData) {
                 internalOrderId=VALUES(internalOrderId)";
         
         // v2.2.60: Detect status transition to 'cancelled' and trigger inventory release
-        $existing = $db->fetchOne("SELECT status, inventoryId FROM orders WHERE id = ?", [$orderData['id']]);
+        $existing = $db->fetchOne("SELECT status, inventoryId, lockTicket FROM orders WHERE id = ?", [$orderData['id']]);
         
         $nowMs = round(microtime(true) * 1000);
         $db->query($sql, [
@@ -392,10 +392,17 @@ function atomicAppendOrder($orderData) {
 
         // If the order was transition to 'cancelled', release inventory specifically
         if ($orderData['status'] === 'cancelled' && $existing && in_array($existing['status'], ['pending', 'queueing']) && !empty($existing['inventoryId'])) {
-            $db->execute("UPDATE inventory SET internalStatus = 'idle', lastMatchedTime = NULL, lockTicket = NULL WHERE id = ?", [$existing['inventoryId']]);
-            $db->execute("INSERT INTO lock_logs (orderId, action, inventoryId, message, timestamp_ms) VALUES (?, ?, ?, ?, ?)", [
-                $orderData['id'], 'INVENTORY_RELEASE', $existing['inventoryId'], "Auto-released via status sync (Transition to CANCELLED)", $nowMs
-            ]);
+            // v2.2.63: Harden release with lockTicket check to prevent "Zombie Releases"
+            $db->execute("UPDATE inventory SET internalStatus = 'idle', lastMatchedTime = NULL, lockTicket = NULL WHERE id = ? AND lockTicket = ?", [$existing['inventoryId'], $existing['lockTicket']]);
+            if ($db->getAffectedRows() > 0) {
+                $db->execute("INSERT INTO lock_logs (orderId, action, inventoryId, message, timestamp_ms) VALUES (?, ?, ?, ?, ?)", [
+                    $orderData['id'], 'INVENTORY_RELEASE', $existing['inventoryId'], "Auto-released via status sync (Transition to CANCELLED) with Ticket Validation", $nowMs
+                ]);
+            } else {
+                $db->execute("INSERT INTO lock_logs (orderId, action, inventoryId, message, timestamp_ms) VALUES (?, ?, ?, ?, ?)", [
+                    $orderData['id'], 'RELEASE_IGNORE', $existing['inventoryId'], "Release ignored: lockTicket mismatch (Item already re-locked by someone else)", $nowMs
+                ]);
+            }
         }
 
         // v2.2.50: Price Auto-Sync to Inventory
@@ -734,6 +741,9 @@ function matchAndLockItem($targetPrice, $internalOrderId, $filters = []) {
             $sql .= " AND i.shopId = ?";
             $params[] = $specificShopId;
         }
+
+        // v2.2.63: Add absolute stable ordering to prevent competition on identical result sets
+        $sql .= " ORDER BY i.id ASC, i.priceNum ASC";
         
         $availableItems = $db->fetchAll($sql, $params);
         $N = count($availableItems);
@@ -793,13 +803,9 @@ function matchAndLockItem($targetPrice, $internalOrderId, $filters = []) {
         $lockTicket = uniqid('LT_', true);
         $match = null; // Initialize $match to ensure it's defined if loop doesn't run or match fails
 
-        // v2.2.52: Transactional Identity & Rollback Safety with detailed logging
-        // Only proceed if rank $pos is within available range
-        $db->query("INSERT INTO lock_logs (orderId, action, pos, message, timestamp_ms) VALUES (?, ?, ?, ?, ?)", [
-            $internalOrderId, 'QUEUE_POS', $pos, "Assigned rank $pos for price $price", $nowMs
-        ]);
-
-        if ($pos < $N) {
+        // v2.2.63 Strict FIFO Principle: Only Rank 0 (absolute front) is allowed to match items.
+        // This ensures no two orders ever compete for the same inventory result set at the same time.
+        if ($pos === 0 && $N > 0) {
             $currentItem = $availableItems[$pos];
             
             $db->query("INSERT INTO lock_logs (orderId, action, pos, inventoryId, message, timestamp_ms) VALUES (?, ?, ?, ?, ?, ?)", [
@@ -1478,10 +1484,17 @@ try {
                 
                 // 3. Release inventory if associated (Atomic Chain)
                 if (!empty($order['inventoryId'])) {
-                    $db->execute("UPDATE inventory SET internalStatus = 'idle', lastMatchedTime = NULL, lockTicket = NULL WHERE id = ?", [$order['inventoryId']]);
-                    $db->execute("INSERT INTO lock_logs (orderId, action, inventoryId, message, timestamp_ms) VALUES (?, ?, ?, ?, ?)", [
-                        $orderId, 'INVENTORY_RELEASE', $order['inventoryId'], "Inventory released specifically for canceled order " . $orderId, round(microtime(true) * 1000)
-                    ]);
+                    // v2.2.63: Harden release with lockTicket check
+                    $db->execute("UPDATE inventory SET internalStatus = 'idle', lastMatchedTime = NULL, lockTicket = NULL WHERE id = ? AND lockTicket = ?", [$order['inventoryId'], $order['lockTicket']]);
+                    if ($db->getAffectedRows() > 0) {
+                        $db->execute("INSERT INTO lock_logs (orderId, action, inventoryId, message, timestamp_ms) VALUES (?, ?, ?, ?, ?)", [
+                            $orderId, 'INVENTORY_RELEASE', $order['inventoryId'], "Inventory released for canceled order " . $orderId, round(microtime(true) * 1000)
+                        ]);
+                    } else {
+                         $db->execute("INSERT INTO lock_logs (orderId, action, inventoryId, message, timestamp_ms) VALUES (?, ?, ?, ?, ?)", [
+                            $orderId, 'RELEASE_IGNORE', $order['inventoryId'], "Release ignored: lockTicket mismatch (Order is stale)", round(microtime(true) * 1000)
+                        ]);
+                    }
                 }
             }
             
