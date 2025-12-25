@@ -830,8 +830,10 @@ function matchAndLockItem($targetPrice, $internalOrderId, $filters = []) {
             
             if ($stmt->rowCount() > 0) {
                 // 2. Update Order Status - CRITICAL: Must be still queueing!
-                $orderStmt = $pdo->prepare("UPDATE orders SET status = 'pending', inventoryId = ?, accountId = ?, lockTicket = ? WHERE id = ? AND status = 'queueing'");
-                $orderStmt->execute([$currentItem['id'], $currentItem['shopId'], $lockTicket, $internalOrderId]);
+                // v2.2.71 FIX: Reset creation time upon match so validity window starts NOW, not when queued.
+                $createdAtNew = date('Y-m-d H:i:s.', (int)$nowFloat) . sprintf("%03d", ($nowFloat - (int)$nowFloat) * 1000);
+                $orderStmt = $pdo->prepare("UPDATE orders SET status = 'pending', inventoryId = ?, accountId = ?, lockTicket = ?, createdAt = ?, createdAtMs = ? WHERE id = ? AND status = 'queueing'");
+                $orderStmt->execute([$currentItem['id'], $currentItem['shopId'], $lockTicket, $createdAtNew, $nowMs, $internalOrderId]);
                 
                 if ($orderStmt->rowCount() > 0) {
                     $matched = true;
