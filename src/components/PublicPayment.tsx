@@ -126,7 +126,8 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
         try {
             const res = await fetch(getApiUrl('ip_logs') + `&_t=${Date.now()}`);
             const allLogs = res.ok ? await res.json() : [];
-            const pageLogs = Array.isArray(allLogs) ? allLogs.filter((l: any) => l.ip === visitorIp && l.pageId === pageId) : [];
+            // v2.2.75: Fix schema mismatch - DB stores pageId in 'type' column
+            const pageLogs = Array.isArray(allLogs) ? allLogs.filter((l: any) => l.ip === visitorIp && l.type === pageId) : [];
 
             const now = Date.now() + clockDrift;
             const windowMs = config.ipLimitTime * 60 * 60 * 1000;
@@ -398,20 +399,21 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
                                 if (currentStep === 8) return null; // Let the safety catch it
                                 return (
                                     <div className="text-center py-12 space-y-6 animate-fade-in">
-                                        <div className="w-20 h-20 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-6 text-amber-600 animate-pulse">
-                                            <Hourglass className="w-10 h-10" />
-                                        </div>
-                                        <div className="space-y-4">
-                                            <h3 className="text-xl font-bold text-slate-800">当前订单过多，全场排队中...</h3>
-                                            <div className="bg-amber-50 text-amber-800 px-4 py-3 rounded-xl border border-amber-100 max-w-xs mx-auto">
-                                                <p className="text-sm">系统正在为您匹配全局空闲商品</p>
-                                                {internalOrderId && <p className="text-[10px] font-mono mt-1 opacity-60">单号: {internalOrderId}</p>}
-                                                <p className="text-xs mt-2 text-amber-600 font-bold">目前排位: 第 {queuePosition || '?'} 位</p>
+                                        <div className="bg-amber-50 p-6 rounded-2xl border border-amber-100 text-amber-800 animate-pulse-slow relative overflow-hidden">
+                                            <div className="flex flex-col items-center gap-3 relative z-10">
+                                                <Loader2 className="w-6 h-6 animate-spin text-amber-600" />
+                                                <div>
+                                                    <h3 className="font-bold text-lg mb-1">正在排队，请稍后</h3>
+                                                    {internalOrderId && <p className="text-[10px] opacity-60 font-mono">单号: {internalOrderId}</p>}
+                                                </div>
                                             </div>
-                                            <div className="w-full bg-slate-100 rounded-full h-2 mt-4 overflow-hidden px-12">
+                                            <div className="mt-4 bg-white/50 rounded-xl p-3 text-center">
+                                                <span className="text-sm font-bold text-amber-900 block">目前排位: 第 {queuePosition || '?'} 位</span>
+                                            </div>
+                                            {/* Progress Bar Aesthetic */}
+                                            <div className="w-full bg-black/5 rounded-full h-1 mt-4 overflow-hidden mx-auto max-w-[120px]">
                                                 <div className="bg-amber-500 h-full rounded-full animate-progress-indeterminate"></div>
                                             </div>
-                                            <p className="text-xs text-slate-400">一旦有空闲将自动为您匹配</p>
                                         </div>
                                     </div>
                                 );
@@ -421,11 +423,18 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
                             case 3:
                             case 4:
                                 return (
-                                    <div className="text-center py-12 space-y-6">
-                                        <Loader2 className="w-16 h-16 animate-spin text-indigo-600 mx-auto" />
-                                        <div className="space-y-2">
-                                            <h3 className="text-xl font-medium text-slate-800">正在生成订单</h3>
-                                            <p className="text-slate-500">请稍候，由于金额校验安全需要，预计需要 3-5 秒...</p>
+                                    <div className="text-center py-12 space-y-6 animate-fade-in">
+                                        <div className="bg-amber-50 p-6 rounded-2xl border border-amber-100 text-amber-800 animate-pulse-slow relative overflow-hidden">
+                                            <div className="flex flex-col items-center gap-3 relative z-10">
+                                                <Loader2 className="w-6 h-6 animate-spin text-amber-600" />
+                                                <div>
+                                                    <h3 className="font-bold text-lg mb-1">正在排队，请稍后</h3>
+                                                    <p className="text-sm">单号: {internalOrderId}</p>
+                                                </div>
+                                            </div>
+                                            <div className="mt-4 bg-white/50 rounded-xl p-3 text-center">
+                                                <span className="text-sm font-bold text-amber-900 block">目前排位: 第 {queuePosition || '?'} 位</span>
+                                            </div>
                                         </div>
                                     </div>
                                 );
