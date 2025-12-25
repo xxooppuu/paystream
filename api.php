@@ -9,7 +9,7 @@
  */
 
 // Version Configuration
-define('APP_VERSION', 'v2.2.48');
+define('APP_VERSION', 'v2.2.49');
 
 // Prevent any output before headers
 ob_start();
@@ -756,9 +756,10 @@ function matchAndLockItem($targetPrice, $internalOrderId, $filters = []) {
         $lockTicket = uniqid('LT_', true);
         $match = null; // Initialize $match to ensure it's defined if loop doesn't run or match fails
 
-        // Loop from current pos to end of available items
-        for ($i = $pos; $i < $N; $i++) {
-            $currentItem = $availableItems[$i];
+        // v2.2.49: Deterministic Rank-Based Locking (Ticket-to-Seat logic)
+        // Each user at rank $pos ONLY attempts to lock the inventory item at the same index
+        if ($pos < $N) {
+            $currentItem = $availableItems[$pos];
             
             // Atomic update: only lock if still idle
             $stmt = $pdo->prepare("UPDATE inventory SET internalStatus = 'occupied', lastMatchedTime = ?, lockTicket = ? WHERE id = ? AND internalStatus = 'idle'");
@@ -766,10 +767,8 @@ function matchAndLockItem($targetPrice, $internalOrderId, $filters = []) {
             
             if ($stmt->rowCount() > 0) {
                 $matched = true;
-                $match = $currentItem; // Assign the successfully locked item
-                break;
+                $match = $currentItem;
             }
-            // If rowCount is 0, someone else grabbed this item, try the next one in list
         }
 
         if (!$matched) {
