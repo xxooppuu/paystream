@@ -359,10 +359,85 @@ export const usePaymentProcess = () => {
                 // Include respCode to help diagnosis
                 throw new Error(`[转转下单被拒绝] Code:${orderData.respCode}, Msg: ${errMsg}`);
             }
-            // v1.8.4: Create Link for scanning
+
+            // v2.2.86: Call saveCashierDeskInfo to get proper WeChat payment deeplink
             const zzOrderNo = orderData.respData.orderId;
-            const payUrl = `https://app.zhuanzhuan.com/zzx/transfer/pay?orderId=${zzOrderNo}`;
+            addLog('正在生成支付链接...');
+
+            const cashierCents = Math.round(amount * 100);
+            const payListParam = encodeURIComponent(JSON.stringify([{
+                "payMethod": "0",
+                "tradeType": "NEW_TRADE",
+                "money": cashierCents.toString(),
+                "extendParam": {
+                    "frontEndType": "3",
+                    "appName": "转转官网",
+                    "appBundleId": "https://m.zhuanzhuan.58.com",
+                    "payConfigId": "showChannel:SHOW_WX;nameRuleId:1821105009618587136",
+                    "instalmentNum": "0",
+                    "cmbToken": "",
+                    "payConfigKey": "showChannel:SHOW_WX;nameRuleId:1821105009618587136"
+                },
+                "tradeTypeKey": "NEW_TRADE"
+            }]));
+
+            const cashierParams = new URLSearchParams();
+            cashierParams.append('reqSource', '1');
+            cashierParams.append('mchId', '1001');
+            cashierParams.append('payId', zzOrderNo);
+            cashierParams.append('payMode', 'base');
+            cashierParams.append('captureState', '-1');
+            cashierParams.append('payList', decodeURIComponent(payListParam));
+
+            const cashierRes = await fetch(getApiUrl('proxy'), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    targetUrl: 'https://app.zhuanzhuan.com/zz/transfer/saveCashierDeskInfo',
+                    method: 'POST',
+                    cookie: buyer.cookie,
+                    body: cashierParams.toString(),
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'Referer': 'https://m.zhuanzhuan.com/',
+                        'Origin': 'https://m.zhuanzhuan.com',
+                        ...(buyer.csrfToken ? { 'Csrf-Token': buyer.csrfToken } : {})
+                    }
+                })
+            });
+
+            let cashierData;
+            try {
+                if (!cashierRes.ok) {
+                    throw new Error(`HTTP ${cashierRes.status}`);
+                }
+                const text = await cashierRes.text();
+                try {
+                    cashierData = JSON.parse(text);
+                } catch (e) {
+                    const snippet = text.substring(0, 100).replace(/\n/g, ' ');
+                    throw new Error(`Invalid JSON response: ${snippet}`);
+                }
+            } catch (e: any) {
+                addLog(`支付链接生成失败: ${e.message}`);
+                throw new Error('支付链接API响应异常');
+            }
+
+            if (cashierData.respCode !== '0') {
+                console.error('Cashier Failed Details:', cashierData);
+                const errMsg = cashierData.respMsg || cashierData.errorMsg || '支付链接生成失败';
+                throw new Error(`[支付链接生成失败] Code:${cashierData.respCode}, Msg: ${errMsg}`);
+            }
+
+            // Extract mWebUrl from response
+            const payData = cashierData.respData?.thirdPayInfodata?.[0]?.payData;
+            if (!payData || !payData.mWebUrl) {
+                throw new Error('支付链接未返回，请稍后重试');
+            }
+
+            const payUrl = payData.mWebUrl;
             setPaymentLink(payUrl);
+            addLog(`支付链接已生成`);
 
             const newOrder: Order = {
                 id: `ZZPAY${Date.now()}`,
