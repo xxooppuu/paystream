@@ -53,7 +53,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
             <Lock className="w-8 h-8 text-white" />
           </div>
           <h1 className="text-2xl font-bold text-white mb-1">PayStream Admin</h1>
-          <p className="text-indigo-200 text-sm">安全支付管理系统 v2.2.56</p>
+          <p className="text-indigo-200 text-sm">安全支付管理系统 v2.2.71</p>
         </div>
 
         <div className="p-8 pb-4">
@@ -117,7 +117,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
           <div className="mt-6 text-center">
             <p className="text-xs text-slate-400">
               {/* v2.1.8-SQL Version Label */}
-              System Build: v2.2.1-MySQL
+              System Build: v2.2.71-MySQL
             </p>
           </div>
         </div>
