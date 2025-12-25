@@ -9,7 +9,7 @@
  */
 
 // Version Configuration
-define('APP_VERSION', 'v2.2.51');
+define('APP_VERSION', 'v2.2.52');
 
 // Prevent any output before headers
 ob_start();
@@ -718,7 +718,8 @@ function matchAndLockItem($targetPrice, $internalOrderId, $filters = []) {
          $queueSql = "SELECT id FROM orders 
                       WHERE status = 'queueing' 
                       AND (lastHeartbeat > ? OR id = ?)
-                      ORDER BY createdAt ASC, id ASC";
+                      ORDER BY createdAt ASC, id ASC
+                      FOR UPDATE";
          $queue = $db->fetchAll($queueSql, [$activeCutoff, $internalOrderId]);
         $queueIds = array_column($queue, 'id');
         $pos = array_search($internalOrderId, $queueIds);
@@ -766,11 +767,19 @@ function matchAndLockItem($targetPrice, $internalOrderId, $filters = []) {
         $lockTicket = uniqid('LT_', true);
         $match = null; // Initialize $match to ensure it's defined if loop doesn't run or match fails
 
-        // v2.2.50: Transactional Identity & Rollback Safety
+        // v2.2.52: Transactional Identity & Rollback Safety with detailed logging
         // Only proceed if rank $pos is within available range
+        $db->query("INSERT INTO lock_logs (orderId, action, pos, message, timestamp_ms) VALUES (?, ?, ?, ?, ?)", [
+            $internalOrderId, 'QUEUE_POS', $pos, "Assigned rank $pos for price $price", $nowMs
+        ]);
+
         if ($pos < $N) {
             $currentItem = $availableItems[$pos];
             
+            $db->query("INSERT INTO lock_logs (orderId, action, pos, inventoryId, message, timestamp_ms) VALUES (?, ?, ?, ?, ?, ?)", [
+                $internalOrderId, 'LOCK_START', $pos, $currentItem['id'], "Attempting to lock inventory item", $nowMs
+            ]);
+
             // 1. Lock Inventory Row
             $stmt = $pdo->prepare("UPDATE inventory SET internalStatus = 'occupied', lastMatchedTime = ?, lockTicket = ? WHERE id = ? AND internalStatus = 'idle'");
             $stmt->execute([$nowMs, $lockTicket, $currentItem['id']]);
@@ -783,19 +792,33 @@ function matchAndLockItem($targetPrice, $internalOrderId, $filters = []) {
                 if ($orderStmt->rowCount() > 0) {
                     $matched = true;
                     $match = $currentItem;
+                    $db->query("INSERT INTO lock_logs (orderId, action, pos, inventoryId, message, timestamp_ms) VALUES (?, ?, ?, ?, ?, ?)", [
+                        $internalOrderId, 'LOCK_SUCCESS', $pos, $currentItem['id'], "Successfully matched and updated order", $nowMs
+                    ]);
                 } else {
                     // TRANSACTIONAL ROLLBACK: Order was cancelled or changed while we were locking inventory
-                    // We must release the inventory lock immediately
                     $pdo->prepare("UPDATE inventory SET internalStatus = 'idle', lastMatchedTime = NULL, lockTicket = NULL WHERE id = ? AND lockTicket = ?")
                         ->execute([$currentItem['id'], $lockTicket]);
                     
+                    $db->query("INSERT INTO lock_logs (orderId, action, pos, inventoryId, message, timestamp_ms) VALUES (?, ?, ?, ?, ?, ?)", [
+                        $internalOrderId, 'ROLLBACK_ORDER', $pos, $currentItem['id'], "Order status changed during lock, inventory released", $nowMs
+                    ]);
+
                     $pdo->commit();
                     return [
                         'status' => 'cancelled',
                         'message' => '订单在匹配过程中已失效，锁定已释放'
                     ];
                 }
+            } else {
+                $db->query("INSERT INTO lock_logs (orderId, action, pos, inventoryId, message, timestamp_ms) VALUES (?, ?, ?, ?, ?, ?)", [
+                    $internalOrderId, 'LOCK_FAILED', $pos, $currentItem['id'], "Inventory item already occupied/locked by another process", $nowMs
+                ]);
             }
+        } else {
+            $db->query("INSERT INTO lock_logs (orderId, action, pos, message, timestamp_ms) VALUES (?, ?, ?, ?, ?)", [
+                $internalOrderId, 'OUT_OF_RANGE', $pos, "Queue position exceeds available items count ($N)", $nowMs
+            ]);
         }
 
         if (!$matched) {
@@ -1031,18 +1054,19 @@ function performSetup($adminPassword, $dbConfig) {
                 lastUpdated VARCHAR(50)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-            CREATE TABLE IF NOT EXISTS payment_pages (
-                id VARCHAR(100) PRIMARY KEY,
-                title VARCHAR(255),
-                channelId VARCHAR(100),
-                minAmount DECIMAL(10,2),
-                maxAmount DECIMAL(10,2),
-                notice TEXT,
-                isOpen TINYINT(1) DEFAULT 1,
-                ipLimitTime DECIMAL(10,2),
-                ipLimitCount INT,
-                ipWhitelist TEXT,
                 createdAt BIGINT
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+            CREATE TABLE IF NOT EXISTS lock_logs (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                orderId VARCHAR(100),
+                action VARCHAR(100),
+                pos INT,
+                inventoryId VARCHAR(100),
+                message TEXT,
+                timestamp_ms BIGINT,
+                INDEX idx_order (orderId),
+                INDEX idx_ts (timestamp_ms)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
         ");
         
