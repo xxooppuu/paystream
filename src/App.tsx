@@ -26,8 +26,8 @@ import { getApiUrl, PROXY_URL } from './config';
 import { SetupWizard } from './components/SetupWizard';
 const App: React.FC = () => {
   useEffect(() => {
-    document.title = 'PayStream Admin v2.2.61';
-    // alert('系统检测到核心逻辑升级 (v2.2.61)，请务必按 Shift+F5 刷新所有页面！');
+    document.title = 'PayStream Admin v2.2.62';
+    // alert('系统检测到核心逻辑升级 (v2.2.62)，请务必按 Shift+F5 刷新所有页面！');
   }, []);
 
   // Check for Public Payment Route
@@ -266,6 +266,10 @@ const App: React.FC = () => {
   useEffect(() => {
     const checkExpiredOrders = async () => {
       try {
+        // 0. Fetch latest settings (to ensure validityDuration is up to date)
+        const sRes = await fetch(getApiUrl('settings'));
+        const latestSettings = sRes.ok ? await sRes.json() : settings;
+
         // 1. Fetch latest orders
         const oRes = await fetch(getApiUrl('orders'));
         if (!oRes.ok) return;
@@ -282,7 +286,7 @@ const App: React.FC = () => {
           if (o.status === OrderStatus.PENDING) {
             // v2.2.56: Use solid Unix Milliseconds instead of timezone-shaky date strings
             const createdTime = o.createdAtMs ? Number(o.createdAtMs) : new Date(o.createdAt).getTime();
-            const validitySec = settings?.validityDuration ? Number(settings.validityDuration) : 180;
+            const validitySec = latestSettings?.validityDuration ? Number(latestSettings.validityDuration) : 180;
             const now = Date.now() + clockDrift;
             if (now - createdTime > validitySec * 1000) {
               console.log(`Auto-cancelling expired order: ${o.id} (Created: ${createdTime}, Now: ${now}, Diff: ${now - createdTime}ms)`);
@@ -643,7 +647,7 @@ const App: React.FC = () => {
           </div>
           {/* Version Footer */}
           <div className="fixed bottom-4 right-4 text-xs text-slate-400 bg-white px-3 py-1 rounded-full shadow-sm border border-slate-200">
-            Admin v2.2.61-MySQL
+            Admin v2.2.62-MySQL
           </div>
         </main>
       </div>
