@@ -9,7 +9,7 @@
  */
 
 // Version Configuration
-define('APP_VERSION', 'v2.2.44');
+define('APP_VERSION', 'v2.2.45');
 
 // Prevent any output before headers
 ob_start();
@@ -641,6 +641,11 @@ function matchAndLockItem($targetPrice, $internalOrderId, $filters = []) {
         // v2.2.39: Status Guard - If order is already matched/complete, don't re-queue it
         $existing = $db->fetchOne("SELECT status, orderNo, inventoryId, accountId, lockTicket FROM orders WHERE id = ?", [$internalOrderId]);
         if ($existing) {
+            // v2.2.45 Liveness Check: If user closed page (>30s no heartbeat), cancel queueing order immediately
+            if ($existing['status'] === 'queueing' && $existing['lastHeartbeat'] > 0 && ($nowMs - $existing['lastHeartbeat']) > 35000) {
+                $db->query("UPDATE orders SET status = 'cancelled' WHERE id = ?", [$internalOrderId]);
+                return ['error' => '排队超时或网页已关闭，请重新下单', 'cancelled' => true];
+            }
             if ($existing['status'] === 'cancelled') {
                 return ['error' => '订单已取消 (管理员手动关闭或心跳超时)', 'cancelled' => true];
             }
@@ -870,13 +875,12 @@ function proactiveCleanup() {
             AND (? - lastHeartbeat) > 30000
         ")->execute([$nowMs]);
 
-        // Long-stale QUEUEING (fallback if heartbeat never started)
+        // QUEUEING > 10m fallback (if heartbeat logic failed)
         $pdo->prepare("
             UPDATE orders 
             SET status = 'cancelled' 
             WHERE status = 'queueing' 
-            AND (lastHeartbeat = 0 OR lastHeartbeat IS NULL)
-            AND (UNIX_TIMESTAMP() - UNIX_TIMESTAMP(STR_TO_DATE(LEFT(createdAt, 19), '%Y-%m-%d %H:%i:%s'))) > 300
+            AND (UNIX_TIMESTAMP() - UNIX_TIMESTAMP(STR_TO_DATE(LEFT(createdAt, 19), '%Y-%m-%d %H:%i:%s'))) > 600
         ")->execute();
 
         $pdo->commit();
