@@ -456,184 +456,186 @@ export const usePaymentProcess = () => {
                 })
             });
 
-        }
+            if (!mWebRes.ok) {
+                throw new Error(`获取支付链接失败: HTTP ${mWebRes.status}`);
+            }
 
             const htmlText = await mWebRes.text();
 
-        // v2.2.92: Add debug logging
-        console.log('[DEBUG] mWebUrl HTML length:', htmlText.length);
-        console.log('[DEBUG] mWebUrl HTML preview:', htmlText.substring(0, 1000));
-        addLog(`HTML已获取 (长度: ${htmlText.length}字节)`);
+            // v2.2.92: Add debug logging
+            console.log('[DEBUG] mWebUrl HTML length:', htmlText.length);
+            console.log('[DEBUG] mWebUrl HTML preview:', htmlText.substring(0, 1000));
+            addLog(`HTML已获取 (长度: ${htmlText.length}字节)`);
 
-        // Extract weixin:// deeplink from HTML
-        // Looking for pattern: var url="weixin://wap/pay?..."
-        const deeplinkMatch = htmlText.match(/var\s+url\s*=\s*"(weixin:\/\/[^"]+)"/);
-        if (!deeplinkMatch || !deeplinkMatch[1]) {
-            console.log('[DEBUG] Primary regex failed, trying fallback...');
-            // Fallback: try to find it in deeplink: field
-            const altMatch = htmlText.match(/deeplink\s*:\s*"(weixin:\/\/[^"]+)"/);
-            if (!altMatch || !altMatch[1]) {
-                console.error('Failed to extract deeplink from HTML. Full HTML:', htmlText);
-                addLog('❌ 未能从HTML中提取支付链接');
-                throw new Error('无法提取支付链接，请稍后重试');
+            // Extract weixin:// deeplink from HTML
+            // Looking for pattern: var url="weixin://wap/pay?..."
+            const deeplinkMatch = htmlText.match(/var\s+url\s*=\s*"(weixin:\/\/[^"]+)"/);
+            if (!deeplinkMatch || !deeplinkMatch[1]) {
+                console.log('[DEBUG] Primary regex failed, trying fallback...');
+                // Fallback: try to find it in deeplink: field
+                const altMatch = htmlText.match(/deeplink\s*:\s*"(weixin:\/\/[^"]+)"/);
+                if (!altMatch || !altMatch[1]) {
+                    console.error('Failed to extract deeplink from HTML. Full HTML:', htmlText);
+                    addLog('❌ 未能从HTML中提取支付链接');
+                    throw new Error('无法提取支付链接，请稍后重试');
+                }
+                console.log('[DEBUG] Extracted via fallback:', altMatch[1]);
+                setPaymentLink(altMatch[1]);
+                addLog(`支付链接已生成 (deeplink字段)`);
+            } else {
+                console.log('[DEBUG] Extracted via primary regex:', deeplinkMatch[1]);
+                setPaymentLink(deeplinkMatch[1]);
+                addLog(`支付链接已生成 (weixin://)`);
             }
-            console.log('[DEBUG] Extracted via fallback:', altMatch[1]);
-            setPaymentLink(altMatch[1]);
-            addLog(`支付链接已生成 (deeplink字段)`);
-        } else {
-            console.log('[DEBUG] Extracted via primary regex:', deeplinkMatch[1]);
-            setPaymentLink(deeplinkMatch[1]);
-            addLog(`支付链接已生成 (weixin://)`);
-        }
 
-        const newOrder: Order = {
-            id: `ZZPAY${Date.now()}`,
-            orderNo: zzOrderNo,
-            customer: buyer.remark || 'Guest',
-            amount,
-            currency: 'CNY',
-            status: OrderStatus.PENDING,
-            channel: 'default',
-            method: 'default',
-            createdAt: new Date().toISOString(),
-            buyerId: buyer.id,
-            inventoryId: item.id,
-            accountId: item.accountId
-        };
-
-        // Save Order to DB (Persistent merge on server)
-        // v2.1.7: Use pre-generated internalOrderId and update status to PENDING
-        const saveRes = await fetch(getApiUrl('add_order'), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                ...newOrder,
-                id: actualOrderId, // v2.2.23: Use the local ID from flow to avoid null state closure
-                lockTicket: lockTicket,
+            const newOrder: Order = {
+                id: `ZZPAY${Date.now()}`,
+                orderNo: zzOrderNo,
+                customer: buyer.remark || 'Guest',
+                amount,
+                currency: 'CNY',
+                status: OrderStatus.PENDING,
+                channel: 'default',
+                method: 'default',
+                createdAt: new Date().toISOString(),
+                buyerId: buyer.id,
                 inventoryId: item.id,
                 accountId: item.accountId
-            })
-        });
+            };
 
-        if (!saveRes.ok) {
-            const sData = await saveRes.json().catch(() => ({}));
-            if (saveRes.status === 409 && sData.code === 'LOCK_INVALID') {
-                throw new Error('库存锁定已失效（可能已被他人抢占），请刷新页面重试');
+            // Save Order to DB (Persistent merge on server)
+            // v2.1.7: Use pre-generated internalOrderId and update status to PENDING
+            const saveRes = await fetch(getApiUrl('add_order'), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    ...newOrder,
+                    id: actualOrderId, // v2.2.23: Use the local ID from flow to avoid null state closure
+                    lockTicket: lockTicket,
+                    inventoryId: item.id,
+                    accountId: item.accountId
+                })
+            });
+
+            if (!saveRes.ok) {
+                const sData = await saveRes.json().catch(() => ({}));
+                if (saveRes.status === 409 && sData.code === 'LOCK_INVALID') {
+                    throw new Error('库存锁定已失效（可能已被他人抢占），请刷新页面重试');
+                }
+                throw new Error(sData.error || '保存订单失败');
             }
-            throw new Error(sData.error || '保存订单失败');
-        }
 
-        setOrder(newOrder);
-        addLog(`下单成功! 订单号: ${newOrder.orderNo}`);
-        setStep(5);
+            setOrder(newOrder);
+            addLog(`下单成功! 订单号: ${newOrder.orderNo}`);
+            setStep(5);
 
-        // v2.0.0: Real-time Status Polling (instead of fake 2s delay)
-        addLog('正在等待支付结果...');
-        const pollStartTime = Date.now();
-        const POLL_TIMEOUT = (settings?.validityDuration ? Number(settings.validityDuration) : 180) * 1000;
+            // v2.0.0: Real-time Status Polling (instead of fake 2s delay)
+            addLog('正在等待支付结果...');
+            const pollStartTime = Date.now();
+            const POLL_TIMEOUT = (settings?.validityDuration ? Number(settings.validityDuration) : 180) * 1000;
 
-        let isPaid = false;
-        while (Date.now() - pollStartTime < POLL_TIMEOUT) {
-            await delay(4000); // Poll every 4s
+            let isPaid = false;
+            while (Date.now() - pollStartTime < POLL_TIMEOUT) {
+                await delay(4000); // Poll every 4s
 
-            try {
-                const statusRes = await fetch(getApiUrl('proxy'), {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        targetUrl: `https://app.zhuanzhuan.com/zz/transfer/getOrder?mversion=3&orderId=${newOrder.orderNo}&abGroup=2`,
-                        method: 'GET',
-                        cookie: buyer.cookie,
-                        headers: { 'Referer': 'https://m.zhuanzhuan.com/' }
-                    })
-                });
+                try {
+                    const statusRes = await fetch(getApiUrl('proxy'), {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            targetUrl: `https://app.zhuanzhuan.com/zz/transfer/getOrder?mversion=3&orderId=${newOrder.orderNo}&abGroup=2`,
+                            method: 'GET',
+                            cookie: buyer.cookie,
+                            headers: { 'Referer': 'https://m.zhuanzhuan.com/' }
+                        })
+                    });
 
-                if (statusRes.ok) {
-                    const sData = await statusRes.json();
-                    if (sData.respCode === '0') {
-                        const statusStr = sData.respData?.status;
-                        const statusInfo = sData.respData?.statusInfo;
+                    if (statusRes.ok) {
+                        const sData = await statusRes.json();
+                        if (sData.respCode === '0') {
+                            const statusStr = sData.respData?.status;
+                            const statusInfo = sData.respData?.statusInfo;
 
-                        // Code 3 is usually Paid/Success
-                        if (statusStr === '3' || statusInfo?.includes('待发货') || statusInfo?.includes('已支付')) {
-                            addLog('🎉 检测到支付成功！');
-                            isPaid = true;
-                            break;
-                        } else if (statusStr === '19' || statusInfo?.includes('已取消')) {
-                            throw new Error('订单已在外部系统取消');
+                            // Code 3 is usually Paid/Success
+                            if (statusStr === '3' || statusInfo?.includes('待发货') || statusInfo?.includes('已支付')) {
+                                addLog('🎉 检测到支付成功！');
+                                isPaid = true;
+                                break;
+                            } else if (statusStr === '19' || statusInfo?.includes('已取消')) {
+                                throw new Error('订单已在外部系统取消');
+                            }
                         }
                     }
+                } catch (pollErr) {
+                    console.warn('Polling error:', pollErr);
                 }
-            } catch (pollErr) {
-                console.warn('Polling error:', pollErr);
             }
+
+            if (isPaid) {
+                setStep(6);
+                // Update local order status if we have it
+                setOrder(prev => prev ? { ...prev, status: OrderStatus.SUCCESS } : null);
+            } else {
+                addLog('⏳ 支付超时或未检测到结果');
+                setStep(7); // Expired/Timeout state
+                // v2.2.64: Remove automatic frontend-driven releaseInventory. 
+                // Rely on backend auto-cancel or explicit admin release.
+            }
+
+            return newOrder;
+
+        } catch (e: any) {
+            const msg = typeof e === 'string' ? e : e.message;
+            setError(msg);
+            addLog(`❌ 进程错误: ${msg}`);
+            // v2.2.64: Remove automatic frontend-driven releaseInventory on process error.
+            // This prevents "Double Matches" when transient errors occur and items are re-locked.
+            setStep(0);
+            return null;
+        }
+    }, [addLog]); // Removed amount/onComplete from deps as they are passed to startPayment
+
+    const cancelCurrentOrder = useCallback(async (isTimeout = false) => {
+        if (order && order.id && order.buyerId) {
+            // v2.2.69: Use SAFE Server-Side Cancellation instead of Admin Force-Release
+            // This ensures we only cancel OUR order, and backend handles lock release safely (CAS).
+            await performOrderCancellation(order.id, order.buyerId);
+        } else if (matchedItem) {
+            // Fallback if order struct isn't fully ready (rare): Try to release lock with ticket
+            // But preferably we should rely on backend timeout if order isn't created.
+            // For v2.2.69, we'll just soft-reset and let backend Handle 'queueing' cleanup.
+            // If we really want to release:
+            await releaseInventory(matchedItem.id, matchedItem.accountId, lockTicket);
         }
 
-        if (isPaid) {
-            setStep(6);
-            // Update local order status if we have it
-            setOrder(prev => prev ? { ...prev, status: OrderStatus.SUCCESS } : null);
+        if (isTimeout) {
+            setStep(7); // Stay on Timeout/Expired screen
         } else {
-            addLog('⏳ 支付超时或未检测到结果');
-            setStep(7); // Expired/Timeout state
-            // v2.2.64: Remove automatic frontend-driven releaseInventory. 
-            // Rely on backend auto-cancel or explicit admin release.
+            setStep(0); // Go back to Home
         }
 
-        return newOrder;
+        setMatchedItem(null);
+        setOrder(null);
+        addLog(isTimeout ? '支付超时' : '用户取消');
+    }, [matchedItem, order, lockTicket]);
 
-    } catch (e: any) {
-        const msg = typeof e === 'string' ? e : e.message;
-        setError(msg);
-        addLog(`❌ 进程错误: ${msg}`);
-        // v2.2.64: Remove automatic frontend-driven releaseInventory on process error.
-        // This prevents "Double Matches" when transient errors occur and items are re-locked.
-        setStep(0);
-        return null;
-    }
-}, [addLog]); // Removed amount/onComplete from deps as they are passed to startPayment
-
-const cancelCurrentOrder = useCallback(async (isTimeout = false) => {
-    if (order && order.id && order.buyerId) {
-        // v2.2.69: Use SAFE Server-Side Cancellation instead of Admin Force-Release
-        // This ensures we only cancel OUR order, and backend handles lock release safely (CAS).
-        await performOrderCancellation(order.id, order.buyerId);
-    } else if (matchedItem) {
-        // Fallback if order struct isn't fully ready (rare): Try to release lock with ticket
-        // But preferably we should rely on backend timeout if order isn't created.
-        // For v2.2.69, we'll just soft-reset and let backend Handle 'queueing' cleanup.
-        // If we really want to release:
-        await releaseInventory(matchedItem.id, matchedItem.accountId, lockTicket);
-    }
-
-    if (isTimeout) {
-        setStep(7); // Stay on Timeout/Expired screen
-    } else {
-        setStep(0); // Go back to Home
-    }
-
-    setMatchedItem(null);
-    setOrder(null);
-    addLog(isTimeout ? '支付超时' : '用户取消');
-}, [matchedItem, order, lockTicket]);
-
-return {
-    startPayment,
-    loading,
-    logs,
-    step,
-    paymentLink,
-    error,
-    matchedTime,
-    order,
-    matchedItem,
-    queueEndTime,
-    freshAccounts,
-    cancelCurrentOrder,
-    orderCreatedAt: order?.createdAt,
-    settings,
-    internalOrderId,
-    queuePosition,
-    amount: order?.amount || 0
-};
+    return {
+        startPayment,
+        loading,
+        logs,
+        step,
+        paymentLink,
+        error,
+        matchedTime,
+        order,
+        matchedItem,
+        queueEndTime,
+        freshAccounts,
+        cancelCurrentOrder,
+        orderCreatedAt: order?.createdAt,
+        settings,
+        internalOrderId,
+        queuePosition,
+        amount: order?.amount || 0
+    };
 };
