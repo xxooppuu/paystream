@@ -1635,17 +1635,12 @@ try {
 
             if ($error) jsonResponse(['error' => "Proxy Error: $error", 'code' => 'CURL_FAIL'], 500);
 
-            // Forward HTTP code and response body
+            // Forward HTTP code and response body as-is
             if (ob_get_length()) ob_clean();
             http_response_code($httpCode);
-            header('Content-Type: application/json');
-            // If response is not JSON, try to wrap it for logging
-            $decoded = json_decode($response, true);
-            if ($decoded === null && json_last_error() !== JSON_ERROR_NONE) {
-                 echo json_encode(['raw' => $response, 'httpCode' => $httpCode, 'warning' => 'Response is not valid JSON']);
-            } else {
-                 echo $response;
-            }
+            
+            // Return raw response without JSON wrapping
+            echo $response;
             break;
         default:
             jsonResponse(['error' => 'Unknown action'], 404);
