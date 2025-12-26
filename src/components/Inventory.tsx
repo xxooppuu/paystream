@@ -128,6 +128,11 @@ export const Inventory: React.FC = () => {
 
             if (order.childOrderList && order.childOrderList.length > 0) {
                 for (const child of order.childOrderList) {
+                    // v2.2.97: Filter - ONLY grab "出售中" items, ignore "质检中", "已售出" etc.
+                    if (child.statusTip !== '出售中') {
+                        continue;
+                    }
+
                     // Fetch Details for InfoID
                     const detailUrl = `https://app.zhuanzhuan.com/zzopen/c2b_consignment/getOrderShareInfo?recycleOrderId=${child.childOrderId}`;
 
