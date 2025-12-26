@@ -9,7 +9,7 @@
  */
 
 // Version Configuration
-define('APP_VERSION', 'v2.2.99');
+define('APP_VERSION', 'v2.2.106');
 
 // Prevent any output before headers
 ob_start();
@@ -430,7 +430,7 @@ function getShopsData() {
         $db = DB::getInstance();
         $shops = $db->fetchAll("SELECT * FROM shops");
         foreach ($shops as &$shop) {
-            $shop['inventory'] = $db->fetchAll("SELECT * FROM inventory WHERE shopId = ?", [$shop['id']]);
+            $shop['inventory'] = $db->fetchAll("SELECT *, shopId AS accountId FROM inventory WHERE shopId = ?", [$shop['id']]);
         }
         return $shops;
     } catch (Exception $e) {
@@ -464,20 +464,28 @@ function updateShopsData($newData) {
                     $lastMatchedTime = isset($item['lastMatchedTime']) ? (float)$item['lastMatchedTime'] : null;
                     $lockTicket = isset($item['lockTicket']) ? $item['lockTicket'] : null;
 
+                    $itemAccountId = isset($item['accountId']) ? $item['accountId'] : $shop['id'];
+                    $itemAccountRemark = isset($item['accountRemark']) ? $item['accountRemark'] : $shop['remark'];
+
+                    // v2.2.106: Consistent price sanitization (remove commas, format to decimal)
+                    $priceRaw = isset($item['price']) ? $item['price'] : '0.00';
+                    $priceNum = (float)str_replace(',', '', $priceRaw);
+                    $priceStr = number_format($priceNum, 2, '.', '');
+
                     if ($existing && $existing['internalStatus'] === 'occupied') {
                         $internalStatus = 'occupied';
                         $lastMatchedTime = $existing['lastMatchedTime'];
                         $lockTicket = $existing['lockTicket'];
                     }
 
-                    $db->query("INSERT INTO inventory (id, shopId, childOrderId, infoId, parentTitle, picUrl, price, status, internalStatus, lastMatchedTime, lockTicket) 
-                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) 
+                    $db->query("INSERT INTO inventory (id, shopId, accountId, accountRemark, childOrderId, infoId, parentTitle, picUrl, price, status, internalStatus, lastMatchedTime, lockTicket) 
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) 
                                 ON DUPLICATE KEY UPDATE 
-                                shopId=VALUES(shopId), childOrderId=VALUES(childOrderId), infoId=VALUES(infoId), parentTitle=VALUES(parentTitle), 
+                                shopId=VALUES(shopId), accountId=VALUES(accountId), accountRemark=VALUES(accountRemark), childOrderId=VALUES(childOrderId), infoId=VALUES(infoId), parentTitle=VALUES(parentTitle), 
                                 picUrl=VALUES(picUrl), price=VALUES(price), status=VALUES(status), 
                                 internalStatus=VALUES(internalStatus), lastMatchedTime=VALUES(lastMatchedTime), lockTicket=VALUES(lockTicket)", [
-                        $item['id'], $shop['id'], $item['childOrderId'], $item['infoId'],
-                        $item['parentTitle'], $item['picUrl'], $item['price'],
+                        $item['id'], $shop['id'], $itemAccountId, $itemAccountRemark, $item['childOrderId'], $item['infoId'],
+                        $item['parentTitle'], $item['picUrl'], $priceStr,
                         $item['status'], $internalStatus, $lastMatchedTime, $lockTicket
                     ]);
                 }
