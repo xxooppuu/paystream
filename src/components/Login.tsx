@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Lock, Mail, ArrowRight, Loader2 } from 'lucide-react';
-import { getApiUrl } from '../config';
+import { getApiUrl, APP_VERSION } from '../config';
 
 interface LoginProps {
   onLogin: () => void;
@@ -53,11 +53,11 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
             <Lock className="w-8 h-8 text-white" />
           </div>
           <h1 className="text-2xl font-bold text-white mb-1">PayStream Admin</h1>
-          <p className="text-indigo-200 text-sm">安全支付管理系统 v2.2.94</p>
+          <p className="text-indigo-200 text-sm">安全支付管理系统 {APP_VERSION}</p>
         </div>
 
         <div className="p-8 pb-4">
-          <span className="text-xs text-blue-500/50 font-mono">System Build: v2.2.94</span>
+          <span className="text-xs text-blue-500/50 font-mono">System Build: {APP_VERSION}</span>
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">
@@ -118,7 +118,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
           <div className="mt-6 text-center">
             <p className="text-xs text-slate-400">
               {/* v2.1.8-SQL Version Label */}
-              System Build: v2.2.71-MySQL
+              System Build: {APP_VERSION}-MySQL
             </p>
           </div>
         </div>

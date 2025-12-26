@@ -25,7 +25,7 @@ import { ViewState, Order, OrderStatus } from './types';
 import { getApiUrl, PROXY_URL, APP_VERSION } from './config';
 import { SetupWizard } from './components/SetupWizard';
 const App: React.FC = () => {
-  document.title = 'PayStream Admin v2.2.94 (FIXED)';
+  document.title = `PayStream Admin ${APP_VERSION} (FIXED)`;
 
   // Check for Public Payment Route
   const [publicPayId, setPublicPayId] = useState<string | null>(null);
@@ -540,7 +540,7 @@ const App: React.FC = () => {
       <div className="min-h-screen bg-[#0f172a] flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
           <div className="w-12 h-12 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
-          <p className="text-center text-gray-500 text-xs mt-8">Admin v2.2.94-MySQL &copy; 2025 PayStream. All rights reserved.</p>
+          <p className="text-center text-gray-500 text-xs mt-8">Admin {APP_VERSION}-MySQL &copy; 2025 PayStream. All rights reserved.</p>
         </div>
       </div>
     );
@@ -679,7 +679,7 @@ const App: React.FC = () => {
           </div>
           {/* Version Footer */}
           <div className="fixed bottom-4 right-4 text-xs text-slate-400 bg-white px-3 py-1 rounded-full shadow-sm border border-slate-200">
-            Admin v2.2.71-MySQL
+            Admin {APP_VERSION}-MySQL
           </div>
         </main>
       </div>
