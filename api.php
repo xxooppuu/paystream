@@ -9,7 +9,7 @@
  */
 
 // Version Configuration
-define('APP_VERSION', 'v2.2.95');
+define('APP_VERSION', 'v2.2.96');
 
 // Prevent any output before headers
 ob_start();
@@ -1597,8 +1597,10 @@ try {
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
             curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
             curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 20);
             
-            // Critical: Use Mobile User-Agent and Referer for WeChat checkmweb
+            // Standard headers to simulate a mobile browser
             $reqHeaders = [
                 'User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0.1 Mobile/15E148 Safari/604.1',
                 'Referer: https://m.zhuanzhuan.com/',
@@ -1612,24 +1614,38 @@ try {
             curl_close($ch);
 
             if (!$response) {
-                jsonResponse(['success' => false, 'error' => 'Failed to fetch payment page'], 500);
+                jsonResponse(['success' => false, 'error' => 'Failed to reach payment page'], 500);
             }
 
-            // Extract weixin:// deeplink from HTML
+            // Extract weixin:// deeplink from HTML using robust patterns
             $deeplink = '';
-            // Pattern 1: var url="weixin://..."
-            if (preg_match('/var\s+url\s*=\s*"(weixin:\/\/[^"]+)"/', $response, $matches)) {
-                $deeplink = $matches[1];
-            } 
-            // Pattern 2: deeplink : "weixin://..."
-            else if (preg_match('/deeplink\s*:\s*"(weixin:\/\/[^"]+)"/', $response, $matches)) {
-                $deeplink = $matches[1];
+            
+            // Combine common patterns (double or single quotes, various assignments)
+            $patterns = [
+                '/var\s+url\s*=\s*(["\'])(weixin:\/\/.*?)\1/',
+                '/deeplink\s*:\s*(["\'])(weixin:\/\/.*?)\1/',
+                '/window\.location\.href\s*=\s*(["\'])(weixin:\/\/.*?)\1/',
+                '/(["\'])(weixin:\/\/.*?)\1/' // Last resort: any quoted weixin link
+            ];
+
+            foreach ($patterns as $pattern) {
+                if (preg_match($pattern, $response, $matches)) {
+                    $deeplink = $matches[2];
+                    break;
+                }
             }
 
             if ($deeplink) {
+                // Return the cleaned deeplink
                 jsonResponse(['success' => true, 'deeplink' => $deeplink]);
             } else {
-                jsonResponse(['success' => false, 'error' => 'Could not extract deeplink from response', 'debug' => substr($response, 0, 500)], 500);
+                // Log failed extraction for debugging
+                error_log("[ConvertPayUrl] Failed to extract from: " . substr($response, 0, 500));
+                jsonResponse([
+                    'success' => false, 
+                    'error' => 'Extraction failed',
+                    'debug' => substr(strip_tags($response), 0, 200) 
+                ], 500);
             }
             break;
 

@@ -25,7 +25,7 @@ import { ViewState, Order, OrderStatus } from './types';
 import { getApiUrl, PROXY_URL, APP_VERSION } from './config';
 import { SetupWizard } from './components/SetupWizard';
 const App: React.FC = () => {
-  document.title = `PayStream Admin ${APP_VERSION} (FIXED)`;
+  document.title = 'PayStream Admin v2.2.96 (FIXED)';
 
   // Check for Public Payment Route
   const [publicPayId, setPublicPayId] = useState<string | null>(null);
@@ -40,7 +40,7 @@ const App: React.FC = () => {
 
     // Security: Only allow admin access on specific path
     // Localhost exception for development ease
-    // v2.2.81: Support Hash-based access (#chen363700) to bypass Nginx 404 issues without server config
+    // v2.2.96: Support Hash-based access (#chen363700) to bypass Nginx 404 issues without server config
     const isSecretHash = window.location.hash.includes('chen363700');
     const isSecretPath = window.location.pathname.includes('/chen363700');
 
@@ -48,7 +48,7 @@ const App: React.FC = () => {
       setIsSecretPath(true);
     }
 
-    // v2.2.71: Force Unregister Legacy Service Workers
+    // v2.2.96: Force Unregister Legacy Service Workers
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.getRegistrations().then(function (registrations) {
         for (let registration of registrations) {
@@ -94,7 +94,7 @@ const App: React.FC = () => {
       console.error("Failed to fetch orders from proxy", e);
     }
   };
-  // v2.1.8 Check Installation Status & Fetch Initial Data
+  // v2.2.96 Check Installation Status & Fetch Initial Data
   useEffect(() => {
     const checkUrl = getApiUrl('check_setup') + '&_t=' + new Date().getTime();
     fetch(checkUrl)
@@ -102,10 +102,10 @@ const App: React.FC = () => {
         const text = await res.text();
         try {
           const data = JSON.parse(text);
-          // DEBUG v2.2.9: Only show if NOT on public payment page
+          // DEBUG v2.2.96: Only show if NOT on public payment page
           const params = new URLSearchParams(window.location.search);
           if (!params.get('pay')) {
-            alert(`[DEBUG v2.2.9]\nStatus: ${data.status}`);
+            alert(`[DEBUG v2.2.96]\nStatus: ${data.status}`);
           }
           if (data.status === 'needs_setup' || data.installed === false) {
             setNeedsSetup(true);
@@ -117,12 +117,12 @@ const App: React.FC = () => {
         } catch (e) {
           // CRITICAL DEBUG
           console.error("Server Response Not JSON:", text);
-          alert(`[CRITICAL ERROR v2.2.4]\nServer returned non-JSON data!\n\n${text.substring(0, 500)}`);
+          alert(`[CRITICAL ERROR v2.2.96]\nServer returned non-JSON data!\n\n${text.substring(0, 500)}`);
           setIsCheckingSetup(false);
         }
       })
       .catch((err) => {
-        alert(`[Network Error v2.2.4]\n${err.message}`);
+        alert(`[Network Error v2.2.96]\n${err.message}`);
         setIsCheckingSetup(false);
       });
 
@@ -171,7 +171,7 @@ const App: React.FC = () => {
       }
 
       // 2. Call Cancel API (Proxy)
-      // Alignment v2.1.0: Use zzx domain and URLSearchParams for correct encoding
+      // Alignment v2.2.96: Use zzx domain and URLSearchParams for correct encoding
       const cancelParams = new URLSearchParams();
       cancelParams.append('cancelReason', '不想要了');
       cancelParams.append('subCancelReason', '');
@@ -215,7 +215,7 @@ const App: React.FC = () => {
     if (!order.inventoryId) return;
 
     try {
-      // v2.1.0: Use the dedicated atomic release endpoint instead of manual file patching
+      // v2.2.96: Use the dedicated atomic release endpoint instead of manual file patching
       const res = await fetch(getApiUrl('release_inventory'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -245,7 +245,7 @@ const App: React.FC = () => {
     }
 
     if (success) {
-      // v2.2.54: Simply call server-side atomic cancellation
+      // v2.2.96: Simply call server-side atomic cancellation
       // The server will handle status update AND inventory release in one transaction
       const cancelRes = await fetch(getApiUrl('cancel_order'), {
         method: 'POST',
@@ -307,7 +307,7 @@ const App: React.FC = () => {
         for (let i = 0; i < updatedOrders.length; i++) {
           const o = updatedOrders[i];
           if (o.status === OrderStatus.PENDING) {
-            // v2.2.56: Use solid Unix Milliseconds instead of timezone-shaky date strings
+            // v2.2.96: Use solid Unix Milliseconds instead of timezone-shaky date strings
             const createdTime = o.createdAtMs ? Number(o.createdAtMs) : new Date(o.createdAt).getTime();
             const validitySec = latestSettings?.validityDuration ? Number(latestSettings.validityDuration) : 180;
             const now = Date.now() + clockDrift;
@@ -333,16 +333,16 @@ const App: React.FC = () => {
               if (cancelled) {
                 updatedOrders[i] = { ...o, status: OrderStatus.CANCELLED };
                 hasChanges = true;
-                // v2.2.57: Server-side cancel_order already handles inventory release.
+                // v2.2.96: Server-side cancel_order already handles inventory release.
                 // Removing frontend release call to prevent "Release Storms" and race conditions.
               } else {
-                // v2.0.1: Hard Expiry - if it's been double the validity duration and still pending, force it.
+                // v2.2.96: Hard Expiry - if it's been double the validity duration and still pending, force it.
                 const hardExpirySec = validitySec * 2;
                 if (now - createdTime > hardExpirySec * 1000) {
                   console.log(`Hard-cancelling stuck order: ${o.id}`);
                   updatedOrders[i] = { ...o, status: OrderStatus.CANCELLED };
                   hasChanges = true;
-                  // await releaseInventoryForOrder(o); // v2.2.57 Removed
+                  // v2.2.96 Removed
                 }
               }
             }
@@ -489,7 +489,7 @@ const App: React.FC = () => {
     checkBackend();
   }, []);
 
-  // v2.0.0: Consolidated Auto-Poll Status for Pending Orders (Every 8s)
+  // v2.2.96: Consolidated Auto-Poll Status for Pending Orders (Every 8s)
   useEffect(() => {
     if (!orders || orders.length === 0 || currentView !== 'orders') return;
 
@@ -540,7 +540,7 @@ const App: React.FC = () => {
       <div className="min-h-screen bg-[#0f172a] flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
           <div className="w-12 h-12 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
-          <p className="text-center text-gray-500 text-xs mt-8">Admin {APP_VERSION}-MySQL &copy; 2025 PayStream. All rights reserved.</p>
+          <p className="text-center text-gray-500 text-xs mt-8">Admin v2.2.96-MySQL &copy; 2025 PayStream. All rights reserved.</p>
         </div>
       </div>
     );

@@ -439,7 +439,7 @@ export const usePaymentProcess = () => {
             const mWebUrl = payData.mWebUrl;
             addLog('正在转换支付链接格式...');
 
-            // v2.2.95: Use dedicated convert_pay_url API for more reliable extraction
+            // v2.2.96: Call simplified conversion API (logic moved to backend)
             const convertRes = await fetch(getApiUrl('convert_pay_url'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -453,12 +453,12 @@ export const usePaymentProcess = () => {
 
             const convertData = await convertRes.json();
             if (!convertData.success || !convertData.deeplink) {
-                console.error('Conversion Failed Details:', convertData);
+                console.error('[ConvertPayUrl] Backend failure:', convertData);
                 throw new Error(convertData.error || '无法提取支付链接，请稍后重试');
             }
 
             setPaymentLink(convertData.deeplink);
-            addLog(`支付链接已生成 (${convertData.deeplink.substring(0, 20)}...)`);
+            addLog(`支付链接转换成功`);
 
             const newOrder: Order = {
                 id: `ZZPAY${Date.now()}`,
