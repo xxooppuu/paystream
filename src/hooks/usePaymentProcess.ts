@@ -218,10 +218,27 @@ export const usePaymentProcess = () => {
             const bRes = await fetch(getApiUrl('buyers'));
             const buyers = await bRes.json();
 
-            // Allow manual override for specific buyer if provided
-            let buyer = specificBuyerId
-                ? buyers.find((b: any) => b.id === specificBuyerId)
-                : buyers.find((b: any) => b.status === '正常' || b.status === undefined);
+            // v2.2.107: Robust Buyer Selection (Specific vs Random Polling)
+            let buyer;
+            const pullMode = settings?.pullMode || 'random';
+            const specId = specificBuyerId || settings?.specificBuyerId;
+
+            const activeBuyers = buyers.filter((b: any) => b.status === '正常' || b.status === undefined);
+
+            if (pullMode === 'specific' && specId) {
+                buyer = buyers.find((b: any) => b.id === specId);
+            }
+
+            if (!buyer && activeBuyers.length > 0) {
+                if (pullMode === 'random') {
+                    // True Random Shuffle
+                    buyer = activeBuyers[Math.floor(Math.random() * activeBuyers.length)];
+                } else {
+                    buyer = activeBuyers[0];
+                }
+            }
+
+            if (!buyer) throw new Error('没有可用的拉单账号，请先在配置中心添加或检查账号状态');
 
             if (!item.infoId) throw new Error('商品信息不完整(infoId缺失)，请联系管理员刷新库存');
 

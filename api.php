@@ -9,7 +9,7 @@
  */
 
 // Version Configuration
-define('APP_VERSION', 'v2.2.106');
+define('APP_VERSION', 'v2.2.107');
 
 // Prevent any output before headers
 ob_start();
@@ -773,7 +773,8 @@ function matchAndLockItem($targetPrice, $internalOrderId, $filters = []) {
         }
 
         // v2.2.63: Add absolute stable ordering to prevent competition on identical result sets
-        $sql .= " ORDER BY i.id ASC, i.priceNum ASC";
+        // v2.2.107: True Random Product Selection within available pool
+        $sql .= " ORDER BY RAND()";
         
         $availableItems = $db->fetchAll($sql, $params);
         $N = count($availableItems);
@@ -1418,7 +1419,12 @@ try {
         case 'buyers':
             $db = DB::getInstance();
             if ($method === 'GET') {
-                jsonResponse($db->fetchAll("SELECT * FROM buyers"));
+                // v2.2.107: Dynamic Stats calculation
+                $sql = "SELECT b.*, 
+                        (SELECT COUNT(*) FROM orders o WHERE o.buyerId = b.id) as totalOrders,
+                        (SELECT COUNT(*) FROM orders o WHERE o.buyerId = b.id AND o.status = 'success') as successOrders
+                        FROM buyers b";
+                jsonResponse($db->fetchAll($sql));
             } else {
                 $input = json_decode(file_get_contents('php://input'), true);
                 if (is_array($input)) {
