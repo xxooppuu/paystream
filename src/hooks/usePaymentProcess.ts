@@ -439,54 +439,26 @@ export const usePaymentProcess = () => {
             const mWebUrl = payData.mWebUrl;
             addLog('正在转换支付链接格式...');
 
-            // v2.2.91: Use proxy to avoid CORS, but no cookie needed for public URL
-            const mWebRes = await fetch(getApiUrl('proxy'), {
+            // v2.2.95: Use dedicated convert_pay_url API for more reliable extraction
+            const convertRes = await fetch(getApiUrl('convert_pay_url'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    targetUrl: mWebUrl,
-                    method: 'GET',
-                    // No cookie needed - mWebUrl is a public WeChat Payment URL
-                    headers: {
-                        'Referer': 'https://m.zhuanzhuan.com/',
-                        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0.1 Mobile/15E148 Safari/604.1',
-                        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                        'Accept-Language': 'zh-CN,zh-Hans;q=0.9'
-                    }
-                })
+                body: JSON.stringify({ targetUrl: mWebUrl })
             });
 
-            if (!mWebRes.ok) {
-                throw new Error(`获取支付链接失败: HTTP ${mWebRes.status}`);
+            if (!convertRes.ok) {
+                const errData = await convertRes.json().catch(() => ({}));
+                throw new Error(`转换支付链接失败: ${errData.error || 'HTTP ' + convertRes.status}`);
             }
 
-            const htmlText = await mWebRes.text();
-
-            // v2.2.92: Add debug logging
-            console.log('[DEBUG] mWebUrl HTML length:', htmlText.length);
-            console.log('[DEBUG] mWebUrl HTML preview:', htmlText.substring(0, 1000));
-            addLog(`HTML已获取 (长度: ${htmlText.length}字节)`);
-
-            // Extract weixin:// deeplink from HTML
-            // Looking for pattern: var url="weixin://wap/pay?..."
-            const deeplinkMatch = htmlText.match(/var\s+url\s*=\s*"(weixin:\/\/[^"]+)"/);
-            if (!deeplinkMatch || !deeplinkMatch[1]) {
-                console.log('[DEBUG] Primary regex failed, trying fallback...');
-                // Fallback: try to find it in deeplink: field
-                const altMatch = htmlText.match(/deeplink\s*:\s*"(weixin:\/\/[^"]+)"/);
-                if (!altMatch || !altMatch[1]) {
-                    console.error('Failed to extract deeplink from HTML. Full HTML:', htmlText);
-                    addLog('❌ 未能从HTML中提取支付链接');
-                    throw new Error('无法提取支付链接，请稍后重试');
-                }
-                console.log('[DEBUG] Extracted via fallback:', altMatch[1]);
-                setPaymentLink(altMatch[1]);
-                addLog(`支付链接已生成 (deeplink字段)`);
-            } else {
-                console.log('[DEBUG] Extracted via primary regex:', deeplinkMatch[1]);
-                setPaymentLink(deeplinkMatch[1]);
-                addLog(`支付链接已生成 (weixin://)`);
+            const convertData = await convertRes.json();
+            if (!convertData.success || !convertData.deeplink) {
+                console.error('Conversion Failed Details:', convertData);
+                throw new Error(convertData.error || '无法提取支付链接，请稍后重试');
             }
+
+            setPaymentLink(convertData.deeplink);
+            addLog(`支付链接已生成 (${convertData.deeplink.substring(0, 20)}...)`);
 
             const newOrder: Order = {
                 id: `ZZPAY${Date.now()}`,

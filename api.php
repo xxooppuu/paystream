@@ -9,7 +9,7 @@
  */
 
 // Version Configuration
-define('APP_VERSION', 'v2.2.94');
+define('APP_VERSION', 'v2.2.95');
 
 // Prevent any output before headers
 ob_start();
@@ -1586,6 +1586,53 @@ try {
         case 'get_ip':
             jsonResponse(['ip' => getClientIp(), 'serverTime' => time() * 1000]);
             break;
+        case 'convert_pay_url':
+            if ($method !== 'POST') jsonResponse(['error' => 'Method Not Allowed'], 405);
+            $input = json_decode(file_get_contents('php://input'), true);
+            if (!$input || !isset($input['targetUrl'])) jsonResponse(['error' => 'Missing targetUrl'], 400);
+
+            $targetUrl = $input['targetUrl'];
+            $ch = curl_init();
+            curl_setopt($ch, CURLOPT_URL, $targetUrl);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+            
+            // Critical: Use Mobile User-Agent and Referer for WeChat checkmweb
+            $reqHeaders = [
+                'User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0.1 Mobile/15E148 Safari/604.1',
+                'Referer: https://m.zhuanzhuan.com/',
+                'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language: zh-CN,zh-Hans;q=0.9',
+                'Connection: keep-alive'
+            ];
+            curl_setopt($ch, CURLOPT_HTTPHEADER, $reqHeaders);
+            
+            $response = curl_exec($ch);
+            curl_close($ch);
+
+            if (!$response) {
+                jsonResponse(['success' => false, 'error' => 'Failed to fetch payment page'], 500);
+            }
+
+            // Extract weixin:// deeplink from HTML
+            $deeplink = '';
+            // Pattern 1: var url="weixin://..."
+            if (preg_match('/var\s+url\s*=\s*"(weixin:\/\/[^"]+)"/', $response, $matches)) {
+                $deeplink = $matches[1];
+            } 
+            // Pattern 2: deeplink : "weixin://..."
+            else if (preg_match('/deeplink\s*:\s*"(weixin:\/\/[^"]+)"/', $response, $matches)) {
+                $deeplink = $matches[1];
+            }
+
+            if ($deeplink) {
+                jsonResponse(['success' => true, 'deeplink' => $deeplink]);
+            } else {
+                jsonResponse(['success' => false, 'error' => 'Could not extract deeplink from response', 'debug' => substr($response, 0, 500)], 500);
+            }
+            break;
+
         case 'proxy':
             if ($method !== 'POST') jsonResponse(['error' => 'Method Not Allowed'], 405);
             $input = json_decode(file_get_contents('php://input'), true);
