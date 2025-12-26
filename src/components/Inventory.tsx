@@ -128,8 +128,9 @@ export const Inventory: React.FC = () => {
 
             if (order.childOrderList && order.childOrderList.length > 0) {
                 for (const child of order.childOrderList) {
-                    // v2.2.97: Filter - ONLY grab "出售中" items, ignore "质检中", "已售出" etc.
-                    if (child.statusTip !== '出售中') {
+                    // v2.2.98: Filter - ONLY grab "出售中" and "买家已拍下" items.
+                    const allowedStatuses = ['出售中', '买家已拍下'];
+                    if (!allowedStatuses.includes(child.statusTip)) {
                         continue;
                     }
 
@@ -357,26 +358,18 @@ export const Inventory: React.FC = () => {
             // Or just replace all items for this account? replacing is better to keep sync.
             const fetchedItems = await fetchDeepAccountData(account);
 
-            // Merge logic (preserve other items' status)
-            const updatedInventory = inventory.map(existing => {
-                // If it belongs to this account
-                if (existing.accountId === account.id) {
-                    const fresh = fetchedItems.find(f => f.id === existing.id);
-                    if (fresh) {
-                        // It's the item we wanted (or a sibling in the same account refresh)
-                        // For the specific item user clicked, we update DATA but preserve STATUS
-                        return {
-                            ...fresh,
-                            internalStatus: existing.internalStatus, // Preserve lock
-                            picUrl: existing.picUrl // Keep image
-                        };
-                    }
-                    return existing; // Item disappeared from remote? Keep existing or remove? 
-                    // If not found in fresh list, it might be sold/gone. 
-                    // For safety in this specific action, let's keep existing if not found?
-                }
-                return existing;
-            });
+            // v2.2.98: Full replacement logic for the account to ensure stale items are cleared
+            const updatedInventory = [
+                ...inventory.filter(i => i.accountId !== account.id),
+                ...fetchedItems.map(fresh => {
+                    const existing = inventory.find(e => e.id === fresh.id);
+                    return {
+                        ...fresh,
+                        internalStatus: existing?.internalStatus || 'idle',
+                        picUrl: existing?.picUrl || fresh.picUrl
+                    };
+                })
+            ];
 
             setInventory(updatedInventory);
             saveShopsToBackend(accounts, updatedInventory);
