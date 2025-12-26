@@ -9,7 +9,7 @@
  */
 
 // Version Configuration
-define('APP_VERSION', 'v2.2.98');
+define('APP_VERSION', 'v2.2.99');
 
 // Prevent any output before headers
 ob_start();
@@ -455,7 +455,9 @@ function updateShopsData($newData) {
             ]);
 
             if (isset($shop['inventory']) && is_array($shop['inventory'])) {
+                $currentItemIds = [];
                 foreach ($shop['inventory'] as $item) {
+                    $currentItemIds[] = $item['id'];
                     $existing = $db->fetchOne("SELECT internalStatus, lastMatchedTime, lockTicket FROM inventory WHERE id = ?", [$item['id']]);
                     
                     $internalStatus = isset($item['internalStatus']) ? $item['internalStatus'] : 'idle';
@@ -478,6 +480,14 @@ function updateShopsData($newData) {
                         $item['parentTitle'], $item['picUrl'], $item['price'],
                         $item['status'], $internalStatus, $lastMatchedTime, $lockTicket
                     ]);
+                }
+
+                // v2.2.99: Clean up stale items for this shop
+                if (!empty($currentItemIds)) {
+                    $placeholders = implode(',', array_fill(0, count($currentItemIds), '?'));
+                    $db->execute("DELETE FROM inventory WHERE shopId = ? AND id NOT IN ($placeholders)", array_merge([$shop['id']], $currentItemIds));
+                } else {
+                    $db->execute("DELETE FROM inventory WHERE shopId = ?", [$shop['id']]);
                 }
             }
         }
