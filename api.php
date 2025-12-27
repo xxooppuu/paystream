@@ -9,7 +9,7 @@
  */
 
 // Version Configuration
-define('APP_VERSION', 'v2.2.108');
+define('APP_VERSION', 'v2.2.109');
 
 // Prevent any output before headers
 ob_start();
@@ -1121,6 +1121,7 @@ function performSetup($adminPassword, $dbConfig) {
                 id VARCHAR(100) PRIMARY KEY,
                 shopId VARCHAR(100),
                 accountId VARCHAR(100),
+                accountRemark VARCHAR(255),
                 status VARCHAR(50),
                 internalStatus VARCHAR(50) DEFAULT 'idle',
                 lastMatchedTime BIGINT DEFAULT 0,
@@ -1202,6 +1203,9 @@ function performSetup($adminPassword, $dbConfig) {
         ");
         
         // v2.2.17 Auto-Migration: Ensure 'lockTicket' column exists for existing installations
+        try {
+            $pdo->exec("ALTER TABLE inventory ADD COLUMN accountRemark VARCHAR(255)");
+        } catch (Exception $e) {}
         try {
             // Check if column exists, if not adds it.
             // Using a simple try-catch with ALTER is the most robust "add if missing" for MySQL without complex logic
