@@ -128,8 +128,8 @@ export const Inventory: React.FC = () => {
 
             if (order.childOrderList && order.childOrderList.length > 0) {
                 for (const child of order.childOrderList) {
-                    // v2.2.98: Filter - ONLY grab "出售中" and "买家已拍下" items.
-                    const allowedStatuses = ['出售中', '买家已拍下'];
+                    // v2.2.108: Filter - ONLY grab "出售中" items. (Removed "买家已拍下" per user request)
+                    const allowedStatuses = ['出售中'];
                     if (!allowedStatuses.includes(child.statusTip)) {
                         continue;
                     }
