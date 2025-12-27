@@ -9,7 +9,7 @@
  */
 
 // Version Configuration
-define('APP_VERSION', 'v2.2.111');
+define('APP_VERSION', 'v2.2.112');
 
 // Prevent any output before headers
 ob_start();
@@ -54,6 +54,11 @@ if ($act !== 'setup' && file_exists($baseDir . '/db_config.php')) {
         try { $pdo->exec("ALTER TABLE orders ADD COLUMN lastHeartbeat BIGINT DEFAULT 0"); } catch (Exception $e) {}
         try { $pdo->exec("ALTER TABLE orders ADD COLUMN lockTicket VARCHAR(100)"); } catch (Exception $e) {}
         try { $pdo->exec("ALTER TABLE inventory ADD COLUMN lockTicket VARCHAR(100)"); } catch (Exception $e) {}
+        // v2.2.112 Runtime Migration: Ensure schema consistency for existing installations
+        try { $pdo->exec("ALTER TABLE inventory ADD COLUMN accountId VARCHAR(100)"); } catch (Exception $e) {}
+        try { $pdo->exec("ALTER TABLE inventory ADD COLUMN priceNum DECIMAL(10,2)"); } catch (Exception $e) {}
+        try { $pdo->exec("ALTER TABLE inventory ADD COLUMN orderId VARCHAR(100)"); } catch (Exception $e) {}
+        try { $pdo->exec("ALTER TABLE inventory ADD COLUMN accountRemark VARCHAR(255)"); } catch (Exception $e) {}
     } catch (Exception $e) {
         // DB not ready yet, skip migration
     }
@@ -499,6 +504,17 @@ function updateShopsData($newData) {
                 }
             }
         }
+
+        // v2.2.112 EXTRA PROTECTION: Purge shops and their inventory not present in this synchronization update
+        $currentShopIds = array_column($newData, 'id');
+        if (!empty($currentShopIds)) {
+            $shopPlaceholders = implode(',', array_fill(0, count($currentShopIds), '?'));
+            // 1. Delete inventory of ghost shops
+            $db->execute("DELETE FROM inventory WHERE shopId NOT IN ($shopPlaceholders)", $currentShopIds);
+            // 2. Delete ghost shops themselves
+            $db->execute("DELETE FROM shops WHERE id NOT IN ($shopPlaceholders)", $currentShopIds);
+        }
+        
         $pdo->commit();
         return true;
     } catch (Exception $e) {
