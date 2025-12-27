@@ -9,7 +9,7 @@
  */
 
 // Version Configuration
-define('APP_VERSION', 'v2.2.112');
+define('APP_VERSION', 'v2.2.113');
 
 // Prevent any output before headers
 ob_start();
@@ -1436,7 +1436,11 @@ try {
             } else {
                 $input = json_decode(file_get_contents('php://input'), true);
                 $res = updateShopsData($input);
-                jsonResponse(['success' => $res === true, 'error' => $res !== true ? $res : null]);
+                if ($res === true) {
+                    jsonResponse(['success' => true]);
+                } else {
+                    jsonResponse(['success' => false, 'error' => $res], 500);
+                }
             }
             break;
         case 'buyers':
