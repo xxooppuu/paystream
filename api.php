@@ -9,7 +9,7 @@
  */
 
 // Version Configuration
-define('APP_VERSION', 'v2.2.110');
+define('APP_VERSION', 'v2.2.111');
 
 // Prevent any output before headers
 ob_start();
@@ -1204,7 +1204,8 @@ function performSetup($adminPassword, $dbConfig) {
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
         ");
         
-        // v2.2.110 Auto-Migration: Complete schema for inventory
+        // v2.2.111 Auto-Migration: Ensure all required columns exist in inventory
+        try { $pdo->exec("ALTER TABLE inventory ADD COLUMN accountId VARCHAR(100)"); } catch (Exception $e) {}
         try { $pdo->exec("ALTER TABLE inventory ADD COLUMN priceNum DECIMAL(10,2)"); } catch (Exception $e) {}
         try { $pdo->exec("ALTER TABLE inventory ADD COLUMN orderId VARCHAR(100)"); } catch (Exception $e) {}
         try { $pdo->exec("ALTER TABLE inventory ADD COLUMN accountRemark VARCHAR(255)"); } catch (Exception $e) {}
@@ -1411,15 +1412,6 @@ try {
             
             $res = performSetup($password, $dbConfig);
             jsonResponse($res);
-            break;
-        case 'debug_columns':
-            try {
-                $db = DB::getInstance();
-                $columns = $db->fetchAll("DESCRIBE inventory");
-                jsonResponse($columns);
-            } catch (Exception $e) {
-                jsonResponse(['error' => $e->getMessage()], 500);
-            }
             break;
         case 'shops':
             proactiveCleanup(); 
