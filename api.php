@@ -1412,6 +1412,15 @@ try {
             $res = performSetup($password, $dbConfig);
             jsonResponse($res);
             break;
+        case 'debug_columns':
+            try {
+                $db = DB::getInstance();
+                $columns = $db->fetchAll("DESCRIBE inventory");
+                jsonResponse($columns);
+            } catch (Exception $e) {
+                jsonResponse(['error' => $e->getMessage()], 500);
+            }
+            break;
         case 'shops':
             proactiveCleanup(); 
             if ($method === 'GET') {
