@@ -9,7 +9,7 @@
  */
 
 // Version Configuration
-define('APP_VERSION', 'v2.2.109');
+define('APP_VERSION', 'v2.2.110');
 
 // Prevent any output before headers
 ob_start();
@@ -478,14 +478,14 @@ function updateShopsData($newData) {
                         $lockTicket = $existing['lockTicket'];
                     }
 
-                    $db->query("INSERT INTO inventory (id, shopId, accountId, accountRemark, childOrderId, infoId, parentTitle, picUrl, price, status, internalStatus, lastMatchedTime, lockTicket) 
-                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) 
+                    $db->query("INSERT INTO inventory (id, shopId, accountId, accountRemark, childOrderId, orderId, infoId, parentTitle, picUrl, price, priceNum, status, internalStatus, lastMatchedTime, lockTicket) 
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) 
                                 ON DUPLICATE KEY UPDATE 
-                                shopId=VALUES(shopId), accountId=VALUES(accountId), accountRemark=VALUES(accountRemark), childOrderId=VALUES(childOrderId), infoId=VALUES(infoId), parentTitle=VALUES(parentTitle), 
-                                picUrl=VALUES(picUrl), price=VALUES(price), status=VALUES(status), 
+                                shopId=VALUES(shopId), accountId=VALUES(accountId), accountRemark=VALUES(accountRemark), childOrderId=VALUES(childOrderId), orderId=VALUES(orderId), infoId=VALUES(infoId), parentTitle=VALUES(parentTitle), 
+                                picUrl=VALUES(picUrl), price=VALUES(price), priceNum=VALUES(priceNum), status=VALUES(status), 
                                 internalStatus=VALUES(internalStatus), lastMatchedTime=VALUES(lastMatchedTime), lockTicket=VALUES(lockTicket)", [
-                        $item['id'], $shop['id'], $itemAccountId, $itemAccountRemark, $item['childOrderId'], $item['infoId'],
-                        $item['parentTitle'], $item['picUrl'], $priceStr,
+                        $item['id'], $shop['id'], $itemAccountId, $itemAccountRemark, $item['childOrderId'], isset($item['orderId']) ? $item['orderId'] : null, $item['infoId'],
+                        $item['parentTitle'], $item['picUrl'], $priceStr, $priceNum,
                         $item['status'], $internalStatus, $lastMatchedTime, $lockTicket
                     ]);
                 }
@@ -1128,9 +1128,11 @@ function performSetup($adminPassword, $dbConfig) {
                 lockTicket VARCHAR(100),
                 title VARCHAR(255),
                 price DECIMAL(10,2),
+                priceNum DECIMAL(10,2),
                 picUrl TEXT,
                 parentTitle TEXT,
                 childOrderId VARCHAR(100),
+                orderId VARCHAR(100),
                 infoId VARCHAR(100),
                 FOREIGN KEY (shopId) REFERENCES shops(id) ON DELETE CASCADE
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -1202,10 +1204,10 @@ function performSetup($adminPassword, $dbConfig) {
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
         ");
         
-        // v2.2.17 Auto-Migration: Ensure 'lockTicket' column exists for existing installations
-        try {
-            $pdo->exec("ALTER TABLE inventory ADD COLUMN accountRemark VARCHAR(255)");
-        } catch (Exception $e) {}
+        // v2.2.110 Auto-Migration: Complete schema for inventory
+        try { $pdo->exec("ALTER TABLE inventory ADD COLUMN priceNum DECIMAL(10,2)"); } catch (Exception $e) {}
+        try { $pdo->exec("ALTER TABLE inventory ADD COLUMN orderId VARCHAR(100)"); } catch (Exception $e) {}
+        try { $pdo->exec("ALTER TABLE inventory ADD COLUMN accountRemark VARCHAR(255)"); } catch (Exception $e) {}
         try {
             // Check if column exists, if not adds it.
             // Using a simple try-catch with ALTER is the most robust "add if missing" for MySQL without complex logic

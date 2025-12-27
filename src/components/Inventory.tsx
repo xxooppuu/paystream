@@ -82,13 +82,18 @@ export const Inventory: React.FC = () => {
         }));
 
         try {
-            await fetch(getApiUrl('shops'), {
+            const response = await fetch(getApiUrl('shops'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(accountsWithData)
             });
-        } catch (err) {
+            if (!response.ok) {
+                const errData = await response.json();
+                throw new Error(errData.error || '后端保存失败');
+            }
+        } catch (err: any) {
             console.error('Failed to save shops', err);
+            alert(`⚠️ 数据未能成功保存到服务器: ${err.message}\n\n这通常是由于数据库字段不匹配导致的，请检查版本是否已正确更新到 v2.2.110。`);
         }
     };
 
