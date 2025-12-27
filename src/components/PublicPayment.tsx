@@ -58,7 +58,13 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
             .then(data => {
                 if (Array.isArray(data)) {
                     const found = data.find((p: any) => p.id === pageId);
-                    setConfig(found || null);
+                    if (found) {
+                        setConfig(found);
+                        // v2.2.114: Sync browser tab title
+                        document.title = found.title || '安全支付收银台';
+                    } else {
+                        setConfig(null);
+                    }
                 }
             })
             .catch(console.error)
