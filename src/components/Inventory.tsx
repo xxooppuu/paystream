@@ -133,7 +133,7 @@ export const Inventory: React.FC = () => {
 
             if (order.childOrderList && order.childOrderList.length > 0) {
                 for (const child of order.childOrderList) {
-                    // v2.2.108: Filter - ONLY grab "出售中" items. (Removed "买家已拍下" per user request)
+                    // v2.2.108: Filter - ONLY grab "出售中" items.
                     const allowedStatuses = ['出售中'];
                     if (!allowedStatuses.includes(child.statusTip)) {
                         continue;
@@ -145,7 +145,6 @@ export const Inventory: React.FC = () => {
                     let infoId = 'Loading...';
                     try {
                         const detailData = await proxyRequest(detailUrl, account);
-                        // Parse infoId from detailData...
                         if (detailData.respData?.shareProductInfo?.jumpUrl) {
                             const match = detailData.respData.shareProductInfo.jumpUrl.match(/infoId=(\d+)/);
                             if (match) infoId = match[1];
@@ -157,18 +156,37 @@ export const Inventory: React.FC = () => {
                     items.push({
                         id: child.childOrderId,
                         childOrderId: child.childOrderId,
-                        orderId: order.orderId, // Parent Order ID
+                        orderId: order.orderId,
                         infoId: infoId,
                         parentTitle: parentTitle,
                         picUrl: child.pics,
                         price: child.price,
-                        priceNum: parseFloat(child.priceNum || child.price.replace(/,/g, '')) || 0, // Fallback parsing
+                        // v2.2.116: Consistent priceNum (Cent -> Yuan conversion)
+                        priceNum: child.priceNum ? (parseFloat(child.priceNum) / 100) : (parseFloat(child.price.replace(/,/g, '')) || 0),
                         status: child.statusTip,
                         internalStatus: 'idle',
                         accountId: account.id,
                         accountRemark: account.remark
                     });
                 }
+            } else if (order.statusInfo === '出售中' && order.infoTitle !== '打包寄卖') {
+                // v2.2.116: Standalone Item Support (Direct order with no children)
+                const infoItem = order.infoList && order.infoList[0];
+                items.push({
+                    id: order.orderId,
+                    childOrderId: '', // No child order for standalone
+                    orderId: order.orderId,
+                    infoId: infoItem?.infoId || 'Unknown',
+                    parentTitle: parentTitle,
+                    picUrl: infoItem?.pics || order.pics || '',
+                    price: order.sumPrice || '0.00',
+                    // v2.2.116: Handle sumPriceNum as cents
+                    priceNum: order.sumPriceNum ? (parseFloat(order.sumPriceNum) / 100) : (parseFloat(order.sumPrice?.replace(/,/g, '') || '0') || 0),
+                    status: order.statusInfo,
+                    internalStatus: 'idle',
+                    accountId: account.id,
+                    accountRemark: account.remark
+                });
             }
         }
         return items;
