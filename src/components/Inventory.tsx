@@ -171,12 +171,25 @@ export const Inventory: React.FC = () => {
                 }
             } else if (order.statusInfo === '出售中' && order.infoTitle !== '打包寄卖') {
                 // v2.2.116: Standalone Item Support (Direct order with no children)
+                // v2.2.120: Also fetch details for standalone items to get the REAL infoId
+                const detailUrl = `https://app.zhuanzhuan.com/zzopen/c2b_consignment/getOrderShareInfo?recycleOrderId=${order.orderId}`;
+                let realInfoId = 'Unknown';
+                try {
+                    const detailData = await proxyRequest(detailUrl, account);
+                    if (detailData.respData?.shareProductInfo?.jumpUrl) {
+                        const match = detailData.respData.shareProductInfo.jumpUrl.match(/infoId=(\d+)/);
+                        if (match) realInfoId = match[1];
+                    }
+                } catch (e) {
+                    console.warn('Failed to fetch details for standalone', order.orderId);
+                }
+
                 const infoItem = order.infoList && order.infoList[0];
                 items.push({
                     id: order.orderId,
                     childOrderId: '', // No child order for standalone
                     orderId: order.orderId,
-                    infoId: infoItem?.infoId || 'Unknown',
+                    infoId: realInfoId, // Use the fetched real ID
                     parentTitle: parentTitle,
                     picUrl: infoItem?.pics || order.pics || '',
                     price: order.sumPrice || '0.00',
