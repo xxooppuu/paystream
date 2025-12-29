@@ -27,13 +27,14 @@ try {
     ];
 
     echo json_encode([
-        'api_version' => 'v2.2.113',
-        'shops_in_db' => $shops,
+        'api_version' => 'v2.2.119',
+        'shops_count' => count($shops),
         'inventory_count' => count($inventory),
-        'missing_account_id' => !in_array('accountId', $fieldNames),
-        'existing_columns' => $fieldNames,
+        'columns' => $fieldNames,
+        'missing_critical_columns' => array_values(array_diff(['accountId', 'orderId', 'infoId', 'childOrderId'], $fieldNames)),
+        'sample_inventory' => array_slice($inventory, 0, 3),
         'json_files_present' => $jsonFiles
-    ], JSON_PRETTY_PRINT);
+    ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
 
 } catch (Exception $e) {
     echo json_encode(['error' => $e->getMessage()]);
