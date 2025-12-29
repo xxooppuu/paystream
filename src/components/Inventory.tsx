@@ -440,7 +440,8 @@ export const Inventory: React.FC = () => {
 
         const cents = Math.round(priceVal * 100);
 
-        const targetUrl = `https://app.zhuanzhuan.com/zzopen/c2b_consignment/changePrice?argueSwitch=true&buyPrice=0&orderId=${editItem.childOrderId}&infoPrice=${cents}&infoShowPrice=${cents}&selectedFastWithdrawService=0`;
+        // v2.2.117: Use generic item.id which handles both child/standalone orderId requirements
+        const targetUrl = `https://app.zhuanzhuan.com/zzopen/c2b_consignment/changePrice?argueSwitch=true&buyPrice=0&orderId=${editItem.id}&infoPrice=${cents}&infoShowPrice=${cents}&selectedFastWithdrawService=0`;
 
         try {
             const res = await proxyRequest(targetUrl, account);
@@ -754,8 +755,9 @@ export const Inventory: React.FC = () => {
                         </div>
                         <div className="p-6">
                             <div className="mb-4">
-                                <label className="block text-sm font-medium text-slate-700 mb-1">当前 ID</label>
-                                <div className="font-mono text-slate-500 bg-slate-100 px-3 py-1.5 rounded">{editItem.infoId}</div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">当前 ID (OrderId)</label>
+                                <div className="font-mono text-slate-500 bg-slate-100 px-3 py-1.5 rounded truncate">{editItem.id}</div>
+                                <div className="text-[10px] text-slate-400 mt-1">InfoID: {editItem.infoId}</div>
                             </div>
                             <div className="mb-6">
                                 <label className="block text-sm font-medium text-slate-700 mb-1">新价格 (¥)</label>

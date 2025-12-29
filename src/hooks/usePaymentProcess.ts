@@ -172,11 +172,12 @@ export const usePaymentProcess = () => {
             if (!sellerAccount) throw new Error('卖家账号异常');
 
             const cents = Math.round(amount * 100);
+            // v2.2.117: Use generic item.id (stands for childOrderId OR orderId)
             const changePriceRes = await fetch(getApiUrl('proxy'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    targetUrl: `https://app.zhuanzhuan.com/zzopen/c2b_consignment/changePrice?argueSwitch=true&buyPrice=0&orderId=${item.childOrderId}&infoPrice=${cents}&infoShowPrice=${cents}&selectedFastWithdrawService=0`,
+                    targetUrl: `https://app.zhuanzhuan.com/zzopen/c2b_consignment/changePrice?argueSwitch=true&buyPrice=0&orderId=${item.id}&infoPrice=${cents}&infoShowPrice=${cents}&selectedFastWithdrawService=0`,
                     method: 'GET',
                     cookie: sellerAccount.cookie,
                     headers: {
@@ -210,7 +211,7 @@ export const usePaymentProcess = () => {
                 const pMsg = priceData.respMsg || priceData.errorMsg || '改价错误';
                 throw new Error(`[转转改价失败] Code: ${priceData.respCode}, Msg: ${pMsg}`);
             }
-            addLog(`改价成功 (${item.childOrderId})`);
+            addLog(`改价成功 (ID: ${item.id})`);
 
             // 3. Create Order
             setStep(4);

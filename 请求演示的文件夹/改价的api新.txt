@@ -1,0 +1,29 @@
+GET https://app.zhuanzhuan.com/zzopen/c2b_consignment/changePrice?argueSwitch=true&buyPrice=0&orderId=2004822443214553112&infoPrice=10800&infoShowPrice=10800&selectedFastWithdrawService=0 HTTP/1.1
+Host: app.zhuanzhuan.com
+Content-Type: application/x-www-form-urlencoded
+Origin: https://m.zhuanzhuan.com
+Cookie: t=16; tk=e5f4d5aefa105fa4698d4777d60a15313bdaf1cd; zz_t=16; id58=CigAD2lSyYue/IgqDpaaAg==; zzreferer=https%3A%2F%2Fm.zhuanzhuan.com%2Fu%2Fbm-consign%2Forder%2Fdetail; PPU="TT=154f9e8b568c0d93547f7adf3b535edd7ffad2f0&UID=1605260075493237632&CT=1767033216246&SF=ZHUANZHUAN&SCT=1767036816246&V=2&K=1767024060&ET=1769625216246&AP=16"; Max-Age=2592000; Expires=Wed, 28 Jan 2026 18:33:36 GMT;; Safe-PPU="TT=154f9e8b568c0d93547f7adf3b535edd7ffad2f0&UID=1605260075493237632&CT=1767033216246&SF=ZHUANZHUAN&SCT=1767036816246&V=2&K=1767024060&ET=1769625216246&AP=16"; Max-Age=2592000; Expires=Wed, 28 Jan 2026 18:33:36 GMT;; app-apn=WIFI; app-os=iOS; app-osv=16.3; app-resolution=828x1792; brand=Apple; brandUpgradeAB=0; dualTrackCateAbSwitch=1; dualTrackFinenessAbRaw=C; dualTrackFinenessAbSwitch=1; feedRecommendation=0; isoffline=0; lat=0.000000; lon=0.000000; luxurySpecialItem=3; model=iPhone12%2C1; officialVerifyUnifyAB=C; platformUpgradeLuxin=3; platformUpgradeRaw=9311; platformUpgradeSwitch=1; platformUpgradeYumi=1; request_remove_latlon=0; uid=1605260075493237632; v=11.26.0; h5checkin_channel=h5plpages_homebottom; zlj_group_id=13; ZZ_SHOP_CHANNEL_ID=2001; srv_dualTrackCateTestKey=1; srv_orderAddressChangeAb=1; srv_searchFilterMergeAB=1; zzVisitStack=%5B%7B%22type%22%3A%22onShow%22%2C%22href%22%3A%22m.zhuanzhuan.com%2Fsystem%2Fzzspampages%2Findex.html%23%2Fslidecaptcha%22%2C%22time%22%3A1766821746024%7D%2C%7B%22type%22%3A%22onShow%22%2C%22href%22%3A%22m.zhuanzhuan.com%252Fsystem%252Fzzspampages%252Findex.html%2523%252Fslidecaptcha%22%2C%22time%22%3A1766821826631%7D%5D; idzz=CigARGlPj2JlckL6GKg1Ag==; goods-token="b464982ac4161b08fe41e2d2f07a5819,J757BbT1SjsIrZB7OgyoNZIigzIRKD/ab6qyZEtccHwJTL47RVVlNT0fYhG+041ANtOKgh4TdSHXZbnDT4Ml4Q=="
+Csrf-Token: 154f9e8b568c0d93547f7adf3b535edd7ffad2f0
+Connection: keep-alive
+Accept: application/json, text/plain, */*
+User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 16_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 zzVersion/11.26.0 zzT/16 zzDevice/1_96.0_2.0 zzApp/58ZhuanZhuan
+Referer: https://m.zhuanzhuan.com/
+Accept-Language: zh-CN,zh-Hans;q=0.9
+Accept-Encoding: gzip, deflate, br
+
+
+HTTP/1.1 200 OK
+Server: Tengine
+Date: Mon, 29 Dec 2025 18:34:39 GMT
+Content-Type: application/json;charset=UTF-8
+Connection: keep-alive
+Vary: Accept-Encoding
+Access-Control-Allow-Origin: https://m.zhuanzhuan.com
+Access-Control-Allow-Credentials: true
+traceId: 6952c9bf0a2b1f970000003b173a704e
+Access-Control-Expose-Headers: traceId
+Content-Length: 79
+
+{"respCode":0,"respData":{
+  "optResult": true
+},"errorMsg":"null","errMsg":""}
