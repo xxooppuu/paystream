@@ -9,7 +9,7 @@
  */
 
 // Version Configuration
-define('APP_VERSION', 'v2.2.117');
+define('APP_VERSION', 'v2.2.118');
 
 // Prevent any output before headers
 ob_start();
@@ -58,6 +58,8 @@ if ($act !== 'setup' && file_exists($baseDir . '/db_config.php')) {
         try { $pdo->exec("ALTER TABLE inventory ADD COLUMN accountId VARCHAR(100)"); } catch (Exception $e) {}
         try { $pdo->exec("ALTER TABLE inventory ADD COLUMN priceNum DECIMAL(10,2)"); } catch (Exception $e) {}
         try { $pdo->exec("ALTER TABLE inventory ADD COLUMN orderId VARCHAR(100)"); } catch (Exception $e) {}
+        try { $pdo->exec("ALTER TABLE inventory ADD COLUMN infoId VARCHAR(100)"); } catch (Exception $e) {}
+        try { $pdo->exec("ALTER TABLE inventory ADD COLUMN childOrderId VARCHAR(100)"); } catch (Exception $e) {}
         try { $pdo->exec("ALTER TABLE inventory ADD COLUMN accountRemark VARCHAR(255)"); } catch (Exception $e) {}
     } catch (Exception $e) {
         // DB not ready yet, skip migration
