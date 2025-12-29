@@ -107,7 +107,9 @@ export const Inventory: React.FC = () => {
             body: JSON.stringify({
                 targetUrl: targetUrl,
                 cookie: account.cookie,
-                csrfToken: account.csrfToken
+                headers: {
+                    'Csrf-Token': account.csrfToken || ''
+                }
             })
         });
         if (!response.ok) throw new Error(`Proxy status: ${response.status}`);

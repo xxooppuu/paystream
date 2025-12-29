@@ -1,0 +1,50 @@
+GET https://app.zhuanzhuan.com/zzopen/c2b_consignment/getOrderShareInfo?recycleOrderId=2004822443214553112 HTTP/1.1
+Host: app.zhuanzhuan.com
+Accept: application/json, text/plain, */*
+Content-Type: application/x-www-form-urlencoded
+Sec-Fetch-Site: same-site
+Origin: https://m.zhuanzhuan.com
+Csrf-Token: 2332f877c0974ee4a45f4ff757c951aa2b989a77
+Sec-Fetch-Mode: cors
+User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0.1 Mobile/15E148 Safari/604.1
+Referer: https://m.zhuanzhuan.com/
+Sec-Fetch-Dest: empty
+Accept-Language: zh-CN,zh-Hans;q=0.9
+Priority: u=3, i
+Accept-Encoding: gzip, deflate, br
+Cookie: t=25; tk=CigARGk7LaSEcgRWBF+aAg==; zz_t=25; zzreferer=https%3A%2F%2Fm.zhuanzhuan.com%2Fu%2Fbm-consign%2Forder%2Fshare-landing; PPU="TT=2332f877c0974ee4a45f4ff757c951aa2b989a77&UID=1605260075493237632&CT=1765829172758&SF=ZHUANZHUAN&SCT=1765832772758&V=2&K=1765814460&ET=1768421172758&AP=25"; Safe-PPU="TT=2332f877c0974ee4a45f4ff757c951aa2b989a77&UID=1605260075493237632&CT=1765829172758&SF=ZHUANZHUAN&SCT=1765832772758&V=2&K=1765814460&ET=1768421172758&AP=25"; v=9.0.0; lat=24.57591; lon=118.09728; nickname=%E7%94%A8%E6%88%B74137aB; picUrl=https%3A%2F%2Fpic1.zhuanstatic.com%2Fzhuanzh%2F6d3bbd31-247c-478b-b95a-ad9c5c3d1a08.jpg; uid=1605260075493237632; goods-token="e4a559c27a1061087872636b319e1ad3,g0ziLOTJpamSImdmTHGwPBIPn4RuOXfcsEf4rR77GmLgt7x0Cchn+6KyjSxkEXkQK6Cq6csGhNgnAvjKG2tH0Q=="; id58=CigACGk7LlKly55kBAhCAg==; idzz=CigARGk7LaSEcgRWBF+aAg==
+Connection: keep-alive
+
+
+HTTP/1.1 200 OK
+Server: Tengine
+Date: Mon, 29 Dec 2025 19:43:25 GMT
+Content-Type: application/json;charset=UTF-8
+Connection: keep-alive
+Vary: Accept-Encoding
+Access-Control-Allow-Origin: https://m.zhuanzhuan.com
+Access-Control-Allow-Credentials: true
+Set-Cookie: PPU="TT=b8663359c00949b6747e51301fa610ae88360211&UID=1605260075493237632&CT=1767037405954&SF=ZHUANZHUAN&SCT=1767041005954&V=2&K=1767024060&ET=1769629405954&AP=25"; Version=1; Domain=zhuanzhuan.com; Max-Age=2592000; Expires=Wed, 28-Jan-2026 19:43:25 GMT; Path=/
+traceId: 6952d9dd0a2b36280000003b175778f7
+Access-Control-Expose-Headers: traceId
+Set-Cookie: Safe-PPU="TT=b8663359c00949b6747e51301fa610ae88360211&UID=1605260075493237632&CT=1767037405954&SF=ZHUANZHUAN&SCT=1767041005954&V=2&K=1767024060&ET=1769629405954&AP=25"; Version=1; Domain=zhuanzhuan.com; Max-Age=2592000; Expires=Wed, 28-Jan-2026 19:43:25 GMT; Path=/; SameSite=Strict
+Content-Length: 844
+
+{"respCode":0,"respData":{
+  "userImg": "https://pic1.zhuanstatic.com/zhuanzh/6d3bbd31-247c-478b-b95a-ad9c5c3d1a08.jpg",
+  "nickname": "用户4137aB",
+  "shareContent": "向你分享了一个Ta在转转寄卖的索尼游戏卡带",
+  "serviceDescList": [
+    "真的官方验",
+    "顺丰包邮",
+    "真图实拍"
+  ],
+  "shareProductInfo": {
+    "productImg": "cd875ad4-cf63-4ad5-a745-8ea72a513099.jpg|7c1d930f-0130-487d-937b-de9a5d4d4f3c.jpg|47d752b3-d835-47c2-950d-ec8d8cbfde16.jpg",
+    "price": "26800",
+    "levelName": "S级",
+    "title": "索尼 直到黎明 血戮 PS4 游戏卡带 其他版本 支持中文",
+    "jumpUrl": "https://m.zhuanzhuan.com/u/bm-consign/lite/product-detail?needHideHead=3&infoId=2005313177969545216"
+  },
+  "shareText": "我正在卖索尼游戏卡带，快来看看吧~"
+},"errorMsg":"null","errMsg":""}
