@@ -473,7 +473,8 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
                             case 2:
                             case 3:
                             case 4:
-                                // v2.2.124: Simplified UI - Spinner + Text
+                                // v2.2.125: Combined UI - Spinner + Progress Bar
+                                const progress = step === 1 ? 35 : (step === 2 ? 45 : (step === 3 ? 65 : 85));
                                 return (
                                     <div className="text-center py-16 space-y-8 animate-fade-in flex flex-col items-center">
                                         <div className="relative">
@@ -493,6 +494,22 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
                                                     <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce"></span>
                                                 </div>
                                                 <span className="text-sm">系统正在为您进行加密传输...</span>
+                                            </div>
+
+                                            {/* v2.2.125: Re-introduced Progress Bar below the dot-animation */}
+                                            <div className="w-full max-w-[240px] mx-auto pt-2">
+                                                <div className="flex justify-between mb-1 text-[10px] font-bold text-indigo-400 uppercase tracking-wider">
+                                                    <span>Security Processing</span>
+                                                    <span>{progress}%</span>
+                                                </div>
+                                                <div className="overflow-hidden h-1.5 flex rounded-full bg-indigo-50 shadow-inner border border-indigo-100/50">
+                                                    <div
+                                                        style={{ width: `${progress}%` }}
+                                                        className="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-gradient-to-r from-indigo-500 to-violet-500 transition-all duration-700 ease-out relative"
+                                                    >
+                                                        <div className="absolute inset-0 bg-white/30 animate-pulse"></div>
+                                                    </div>
+                                                </div>
                                             </div>
                                         </div>
 
