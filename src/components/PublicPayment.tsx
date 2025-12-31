@@ -477,7 +477,6 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
                                     <div className="text-center py-12 space-y-8 animate-fade-in">
                                         <div className="space-y-4">
                                             <h3 className="font-bold text-xl text-slate-800">正在生成订单 请勿离开！</h3>
-                                            <p className="text-sm text-slate-500">正在为您安全匹配商品，请稍候...</p>
                                         </div>
 
                                         <div className="relative pt-1">
