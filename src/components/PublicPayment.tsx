@@ -471,16 +471,41 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
                             case 2:
                             case 3:
                             case 4:
+                                // v2.2.122: Progress Mapping
+                                const progress = step === 1 ? 35 : (step === 2 ? 45 : (step === 3 ? 65 : 85));
                                 return (
-                                    <div className="text-center py-12 space-y-6 animate-fade-in">
-                                        <div className="bg-blue-50 p-6 rounded-2xl border border-blue-100 text-blue-800 animate-pulse-slow relative overflow-hidden">
-                                            <div className="flex flex-col items-center gap-3 relative z-10">
-                                                <div className="w-8 h-8 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
+                                    <div className="text-center py-12 space-y-8 animate-fade-in">
+                                        <div className="space-y-4">
+                                            <h3 className="font-bold text-xl text-slate-800">正在生成订单 请勿离开！</h3>
+                                            <p className="text-sm text-slate-500">正在为您安全匹配商品，请稍候...</p>
+                                        </div>
+
+                                        <div className="relative pt-1">
+                                            <div className="flex mb-2 items-center justify-between">
                                                 <div>
-                                                    <h3 className="font-bold text-lg mb-1">正在为您匹配订单...</h3>
-                                                    <p className="text-sm opacity-80">请勿关闭页面，马上就好</p>
+                                                    <span className="text-xs font-semibold inline-block py-1 px-2 uppercase rounded-full text-indigo-600 bg-indigo-200">
+                                                        系统处理中
+                                                    </span>
+                                                </div>
+                                                <div className="text-right">
+                                                    <span className="text-xs font-semibold inline-block text-indigo-600">
+                                                        {progress}%
+                                                    </span>
                                                 </div>
                                             </div>
+                                            <div className="overflow-hidden h-3 mb-4 text-xs flex rounded-full bg-indigo-100 shadow-inner">
+                                                <div
+                                                    style={{ width: `${progress}%` }}
+                                                    className="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-gradient-to-r from-indigo-500 to-violet-500 transition-all duration-700 ease-out relative"
+                                                >
+                                                    <div className="absolute inset-0 bg-white/20 animate-pulse"></div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex items-center justify-center gap-2 text-xs text-slate-400">
+                                            <ShieldCheck className="w-4 h-4 text-green-500" />
+                                            <span>PayStream 银行级加密传输</span>
                                         </div>
                                     </div>
                                 );
