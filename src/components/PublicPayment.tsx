@@ -236,7 +236,7 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
     // v2.2.84: Handle Rest Mode (Store Closed) - Bypass WeChat Redirect
     // Check for explicit false or numeric 0
     // v2.2.124: Safer check for isOpen (boolean | number)
-    if (config.isOpen === false || config.isOpen === 0 || config.isOpen === '0') {
+    if (config.isOpen === false || config.isOpen === 0 || String(config.isOpen) === '0') {
         return (
             <div className="min-h-screen bg-slate-100 flex items-center justify-center p-6">
                 <div className="bg-white max-w-md w-full rounded-2xl shadow-xl overflow-hidden">
@@ -346,7 +346,7 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
 
                         // 1. 商家休息中 (最高优先级)
                         // 1. 商家休息中 (最高优先级) - v2.2.124: Safer check
-                        if (config.isOpen === false || config.isOpen === 0 || config.isOpen === '0') {
+                        if (config.isOpen === false || config.isOpen === 0 || String(config.isOpen) === '0') {
                             return (
                                 <div className="text-center py-12 space-y-6 animate-fade-in">
                                     <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-6 text-slate-400">
@@ -473,40 +473,34 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
                             case 2:
                             case 3:
                             case 4:
-                                // v2.2.122: Progress Mapping
-                                const progress = step === 1 ? 35 : (step === 2 ? 45 : (step === 3 ? 65 : 85));
+                                // v2.2.124: Simplified UI - Spinner + Text
                                 return (
-                                    <div className="text-center py-12 space-y-8 animate-fade-in">
-                                        <div className="space-y-4">
-                                            <h3 className="font-bold text-xl text-slate-800">正在生成订单 请勿离开！</h3>
-                                        </div>
-
-                                        <div className="relative pt-1">
-                                            <div className="flex mb-2 items-center justify-between">
-                                                <div>
-                                                    <span className="text-xs font-semibold inline-block py-1 px-2 uppercase rounded-full text-indigo-600 bg-indigo-200">
-                                                        系统处理中
-                                                    </span>
-                                                </div>
-                                                <div className="text-right">
-                                                    <span className="text-xs font-semibold inline-block text-indigo-600">
-                                                        {progress}%
-                                                    </span>
-                                                </div>
-                                            </div>
-                                            <div className="overflow-hidden h-3 mb-4 text-xs flex rounded-full bg-indigo-100 shadow-inner">
-                                                <div
-                                                    style={{ width: `${progress}%` }}
-                                                    className="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-gradient-to-r from-indigo-500 to-violet-500 transition-all duration-700 ease-out relative"
-                                                >
-                                                    <div className="absolute inset-0 bg-white/20 animate-pulse"></div>
-                                                </div>
+                                    <div className="text-center py-16 space-y-8 animate-fade-in flex flex-col items-center">
+                                        <div className="relative">
+                                            {/* Beautiful animated spinner */}
+                                            <div className="w-20 h-20 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin shadow-inner"></div>
+                                            <div className="absolute inset-0 flex items-center justify-center">
+                                                <ShieldCheck className="w-8 h-8 text-indigo-200" />
                                             </div>
                                         </div>
 
-                                        <div className="flex items-center justify-center gap-2 text-xs text-slate-400">
-                                            <ShieldCheck className="w-4 h-4 text-green-500" />
-                                            <span>PayStream 银行级加密传输</span>
+                                        <div className="space-y-3">
+                                            <h3 className="font-bold text-2xl text-slate-800 tracking-tight">正在生成订单 请勿离开！</h3>
+                                            <div className="flex items-center justify-center gap-2 text-indigo-500 font-medium">
+                                                <div className="flex gap-1">
+                                                    <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce [animation-delay:-0.3s]"></span>
+                                                    <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce [animation-delay:-0.15s]"></span>
+                                                    <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce"></span>
+                                                </div>
+                                                <span className="text-sm">系统正在为您进行加密传输...</span>
+                                            </div>
+                                        </div>
+
+                                        <div className="pt-8">
+                                            <div className="inline-flex items-center gap-2 px-4 py-2 bg-slate-50 border border-slate-100 rounded-full text-xs text-slate-400">
+                                                <ShieldCheck className="w-4 h-4 text-green-500" />
+                                                <span>PayStream 银行级安全保障</span>
+                                            </div>
                                         </div>
                                     </div>
                                 );
