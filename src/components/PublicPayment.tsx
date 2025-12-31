@@ -235,7 +235,8 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
 
     // v2.2.84: Handle Rest Mode (Store Closed) - Bypass WeChat Redirect
     // Check for explicit false or numeric 0
-    if (!config.isOpen || config.isOpen === 0) {
+    // v2.2.124: Safer check for isOpen (boolean | number)
+    if (config.isOpen === false || config.isOpen === 0 || config.isOpen === '0') {
         return (
             <div className="min-h-screen bg-slate-100 flex items-center justify-center p-6">
                 <div className="bg-white max-w-md w-full rounded-2xl shadow-xl overflow-hidden">
@@ -344,7 +345,8 @@ export const PublicPayment: React.FC<Props> = ({ pageId }) => {
                         }
 
                         // 1. 商家休息中 (最高优先级)
-                        if (!config.isOpen || config.isOpen === 0) {
+                        // 1. 商家休息中 (最高优先级) - v2.2.124: Safer check
+                        if (config.isOpen === false || config.isOpen === 0 || config.isOpen === '0') {
                             return (
                                 <div className="text-center py-12 space-y-6 animate-fade-in">
                                     <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-6 text-slate-400">
